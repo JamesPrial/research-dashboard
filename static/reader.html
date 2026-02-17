@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Research Reader</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
+        integrity="sha256-k04+Nuni2gr7Gm51B1uw8JrwUpOoROhKdHfvQJEcNJo="
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"
+        integrity="sha256-jrQbZYgx+rF1+tm80A/LLYTg7TolpVBT1OzUREuLQ6A="
+        crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/static/shared.css">
+<style>
+.main-panel iframe {
+  flex: 1;
+  border: none;
+  width: 100%;
+  background: #fff;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 2px;
+}
+
+.tab-bar .tab {
+  padding: 5px 14px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 500;
+  text-decoration: none;
+  color: inherit;
+}
+
+.tab-bar .tab:hover { background: #f0f0f0; }
+
+.tab-bar .tab.active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/">Research Dashboard</a>
+  <span class="header-nav" id="headerContext"></span>
+</header>
+
+<div class="main-panel" id="mainPanel">
+  <div class="empty-state">Loading...</div>
+</div>
+
+<script src="/static/shared.js"></script>
+<script>
+const state = {
+  runName: null,
+  jobId: null,
+  viewMode: 'report',  // 'report' | 'files' | 'source'
+  fileList: null,
+  currentFile: null,
+  // Metadata loaded from API
+  title: '',
+  dateStr: '',
+};
+
+// --- Initialization ---
+
+async function init() {
+  const params = new URLSearchParams(location.search);
+  state.runName = params.get('run');
+  state.jobId = params.get('jobId');
+  const view = params.get('view') || 'report';
+
+  if (!state.runName && !state.jobId) {
+    window.location.href = '/';
+    return;
+  }
+
+  // Set up header context
+  if (state.runName) {
+    const parsed = parseDirName(state.runName);
+    state.title = parsed.topic;
+    state.dateStr = parsed.date;
+  } else if (state.jobId) {
+    try {
+      const detail = await fetchJob(state.jobId);
+      state.title = detail.query;
+      state.dateStr = detail.status;
+    } catch (e) {
+      state.title = 'Job ' + state.jobId.slice(0, 8);
+      state.dateStr = '';
+    }
+  }
+
+  document.getElementById('headerContext').textContent = state.title;
+  document.title = `${state.title} — Research Reader`;
+
+  // Route to initial view
+  if (view === 'files') {
+    loadFiles();
+  } else if (view === 'source') {
+    const file = params.get('file');
+    const type = params.get('type') || 'md';
+    if (file) {
+      loadSourceFile(file, type);
+    } else {
+      loadFiles();
+    }
+  } else {
+    loadReport();
+  }
+}
+
+// --- Navigation helpers ---
+
+function updateURL(view, extra = {}) {
+  const params = new URLSearchParams();
+  if (state.runName) params.set('run', state.runName);
+  if (state.jobId) params.set('jobId', state.jobId);
+  if (view !== 'report') params.set('view', view);
+  for (const [k, v] of Object.entries(extra)) {
+    params.set(k, v);
+  }
+  history.pushState(null, '', '?' + params.toString());
+}
+
+// Handle browser back/forward
+window.addEventListener('popstate', () => {
+  const params = new URLSearchParams(location.search);
+  const view = params.get('view') || 'report';
+  if (view === 'files') {
+    loadFiles();
+  } else if (view === 'source') {
+    const file = params.get('file');
+    const type = params.get('type') || 'md';
+    if (file) loadSourceFile(file, type, true);
+    else loadFiles();
+  } else {
+    loadReport(true);
+  }
+});
+
+// --- Toolbar rendering ---
+
+function renderToolbar(activeTab) {
+  const tabs = [
+    { id: 'report', label: 'Report' },
+    { id: 'files', label: 'Sources' },
+  ];
+
+  const tabHtml = tabs.map(t =>
+    `<span class="tab ${t.id === activeTab ? 'active' : ''}" onclick="navigate('${t.id}')">${t.label}</span>`
+  ).join('');
+
+  return `<div class="panel-toolbar">
+    <a class="btn" href="/">Dashboard</a>
+    <span class="toolbar-title">${escapeHtml(truncate(state.title, 80))}</span>
+    <span class="toolbar-status">${escapeHtml(state.dateStr)}</span>
+    <div class="tab-bar">${tabHtml}</div>
+  </div>`;
+}
+
+function navigate(view) {
+  if (view === 'report') loadReport();
+  else if (view === 'files') loadFiles();
+}
+
+// --- Report view ---
+
+async function loadReport(fromPopstate) {
+  state.viewMode = 'report';
+  if (!fromPopstate) updateURL('report');
+
+  const panel = document.getElementById('mainPanel');
+  panel.innerHTML = renderToolbar('report') +
+    `<div class="report-view"><div class="report-content">Loading report...</div></div>`;
+
+  try {
+    const md = state.runName
+      ? await fetchPastReport(state.runName)
+      : await fetchJobReport(state.jobId);
+    panel.querySelector('.report-content').innerHTML = renderMarkdown(md);
+  } catch (e) {
+    panel.querySelector('.report-content').textContent = 'Failed to load report: ' + e.message;
+  }
+}
+
+// --- Files view ---
+
+async function loadFiles() {
+  state.viewMode = 'files';
+  state.currentFile = null;
+  updateURL('files');
+
+  const panel = document.getElementById('mainPanel');
+  panel.innerHTML = renderToolbar('files') +
+    `<div class="report-view"><div class="report-content">Loading sources...</div></div>`;
+
+  try {
+    if (state.runName) {
+      state.fileList = await fetchFileList(state.runName);
+    } else {
+      state.fileList = await fetchJobFileList(state.jobId);
+    }
+    renderFileBrowser(state.fileList);
+  } catch (e) {
+    panel.querySelector('.report-content').textContent = 'Failed to load files: ' + e.message;
+  }
+}
+
+function renderFileBrowser(data) {
+  const panel = document.getElementById('mainPanel');
+  const sources = parseSourceIndex(data.source_index);
+
+  let content = renderToolbar('files') + '<div class="report-view"><div class="report-content">';
+
+  if (sources.length > 0) {
+    content += '<table><thead><tr><th>#</th><th>Source</th><th>Status</th><th>View</th></tr></thead><tbody>';
+    sources.forEach(s => {
+      const mdPath = `sources/${s.mdFile}`;
+      const htmlPath = `sources/${s.htmlFile}`;
+      const statusHtml = s.status === 'ok'
+        ? '<span class="source-status-ok">ok</span>'
+        : `<span class="source-status-fail">${escapeHtml(s.status)}</span>`;
+      content += `<tr>
+        <td>${s.num}</td>
+        <td>
+          <div style="font-weight:500">${escapeHtml(s.title)}</div>
+          <div class="source-url"><a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(truncate(s.url, 70))}</a></div>
+        </td>
+        <td>${statusHtml}</td>
+        <td><div class="source-actions">
+          <button class="btn btn-primary" onclick="loadSourceFile('${escapeAttr(mdPath)}', 'md')">MD</button>
+          <button class="btn" onclick="loadSourceFile('${escapeAttr(htmlPath)}', 'html')">HTML</button>
+        </div></td>
+      </tr>`;
+    });
+    content += '</tbody></table>';
+  } else {
+    // Fallback: flat file list
+    content += '<h3>Source Files</h3><ul>';
+    data.sources.forEach(f => {
+      content += `<li><a href="#" onclick="loadSourceFile('${escapeAttr(f.path)}', '${f.type}'); return false;">${escapeHtml(f.name)}</a> (${formatSize(f.size)})</li>`;
+    });
+    content += '</ul>';
+  }
+
+  if (data.files.filter(f => f.name !== 'report.md').length > 0) {
+    content += '<h3 style="margin-top:24px">Other Files</h3><ul>';
+    data.files.forEach(f => {
+      if (f.name !== 'report.md') {
+        content += `<li><a href="#" onclick="loadSourceFile('${escapeAttr(f.path)}', '${f.type}'); return false;">${escapeHtml(f.name)}</a> (${formatSize(f.size)})</li>`;
+      }
+    });
+    content += '</ul>';
+  }
+
+  content += '</div></div>';
+  panel.innerHTML = content;
+}
+
+// --- Source file view ---
+
+async function loadSourceFile(filePath, fileType, fromPopstate) {
+  state.viewMode = 'source';
+  state.currentFile = { path: filePath, type: fileType, name: filePath.split('/').pop() };
+  if (!fromPopstate) updateURL('source', { file: filePath, type: fileType });
+
+  const panel = document.getElementById('mainPanel');
+
+  if (fileType === 'html') {
+    const url = state.runName
+      ? `/research/past/${state.runName}/files/${filePath}`
+      : `/research/${state.jobId}/files/${filePath}`;
+    panel.innerHTML = `<div class="panel-toolbar">
+      <button class="btn" onclick="loadFiles()">Back to Sources</button>
+      <span class="toolbar-title">${escapeHtml(state.currentFile.name)}</span>
+      <a class="btn" href="${url}" target="_blank" rel="noopener">Open in New Tab</a>
+    </div>
+    <iframe src="${url}" sandbox="allow-same-origin"></iframe>`;
+  } else {
+    panel.innerHTML = `<div class="panel-toolbar">
+      <button class="btn" onclick="loadFiles()">Back to Sources</button>
+      <span class="toolbar-title">${escapeHtml(state.currentFile.name)}</span>
+    </div>
+    <div class="report-view"><div class="report-content">Loading...</div></div>`;
+
+    try {
+      const fetchFn = state.runName ? fetchFile : fetchJobFile;
+      const id = state.runName || state.jobId;
+      const text = await fetchFn(id, filePath);
+      panel.querySelector('.report-content').innerHTML = renderMarkdown(text);
+    } catch (e) {
+      panel.querySelector('.report-content').textContent = 'Failed to load file: ' + e.message;
+    }
+  }
+}
+
+// --- Init ---
+init();
+</script>
+</body>
+</html>

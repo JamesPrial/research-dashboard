@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Research Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
+        integrity="sha256-k04+Nuni2gr7Gm51B1uw8JrwUpOoROhKdHfvQJEcNJo="
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"
+        integrity="sha256-jrQbZYgx+rF1+tm80A/LLYTg7TolpVBT1OzUREuLQ6A="
+        crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/static/shared.css">
+<style>
+.container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 340px;
+  min-width: 340px;
+  background: #fff;
+  border-right: 1px solid #ddd;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.query-form {
+  padding: 16px;
+  border-bottom: 1px solid #ddd;
+}
+
+.query-form textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.query-form textarea:focus { outline: none; border-color: #3b82f6; }
+
+.form-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.form-row select {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.form-row button {
+  flex: 1;
+  padding: 7px 14px;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.form-row button:hover { background: #2563eb; }
+.form-row button:disabled { background: #93c5fd; cursor: not-allowed; }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #888;
+  padding: 12px 16px 6px;
+  letter-spacing: 0.5px;
+}
+
+.job-list {
+  overflow-y: auto;
+  flex: 1;
+}
+
+.job-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.1s;
+}
+
+.job-item:hover { background: #f7f7f7; }
+.job-item.selected { background: #eff6ff; border-left: 3px solid #3b82f6; padding-left: 13px; }
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.status-dot.pending { background: #aaa; }
+.status-dot.running { background: #3b82f6; animation: pulse 1.5s ease-in-out infinite; }
+.status-dot.completed { background: #22c55e; }
+.status-dot.failed { background: #ef4444; }
+.status-dot.cancelled { background: #aaa; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.job-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.job-query {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job-meta {
+  font-size: 11px;
+  color: #888;
+  margin-top: 2px;
+}
+
+/* Job progress bar */
+.job-progress {
+  height: 3px;
+  background: #e5e7eb;
+  border-radius: 2px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+.job-progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+/* Output view */
+.output-view {
+  flex: 1;
+  overflow-y: auto;
+  background: #1e1e1e;
+  padding: 16px;
+}
+
+.output-view pre {
+  color: #d4d4d4;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}
+
+/* Event cards in output view */
+.evt-card {
+  border-left: 3px solid #444;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  background: #252525;
+  overflow: hidden;
+}
+
+.evt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.evt-header:hover { background: #2a2a2a; }
+
+.evt-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.evt-title {
+  flex: 1;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evt-preview {
+  color: #888;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+.evt-chevron {
+  color: #666;
+  font-size: 10px;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.evt-card.expanded .evt-chevron {
+  transform: rotate(90deg);
+}
+
+.evt-body {
+  display: none;
+  padding: 8px 12px;
+  border-top: 1px solid #333;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #d4d4d4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.evt-card.expanded .evt-body {
+  display: block;
+}
+
+/* Tool call — blue */
+.evt-tool-call {
+  border-left-color: #3b82f6;
+}
+.evt-tool-call .evt-header { color: #93c5fd; }
+.evt-tool-call .evt-icon { color: #60a5fa; }
+
+/* Tool result — green (or red on error) */
+.evt-tool-result {
+  border-left-color: #22c55e;
+}
+.evt-tool-result .evt-header { color: #86efac; }
+.evt-tool-result .evt-icon { color: #4ade80; }
+.evt-tool-result.evt-error {
+  border-left-color: #ef4444;
+}
+.evt-tool-result.evt-error .evt-header { color: #fca5a5; }
+.evt-tool-result.evt-error .evt-icon { color: #f87171; }
+
+/* Assistant text */
+.evt-text {
+  border-left-color: #a78bfa;
+  border-left-width: 3px;
+}
+.evt-text .evt-content {
+  padding: 10px 14px;
+  color: #e2e8f0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.evt-text .evt-content p { margin: 8px 0; }
+.evt-text .evt-content p:first-child { margin-top: 0; }
+.evt-text .evt-content p:last-child { margin-bottom: 0; }
+.evt-text .evt-content a { color: #93c5fd; }
+.evt-text .evt-content code {
+  background: #333;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: "SF Mono", "Fira Code", Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+.evt-text .evt-content pre {
+  background: #1a1a1a;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+.evt-text .evt-content pre code {
+  background: none;
+  padding: 0;
+}
+.evt-text .evt-content ul, .evt-text .evt-content ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.evt-text .evt-content blockquote {
+  border-left: 3px solid #555;
+  padding-left: 12px;
+  color: #aaa;
+  margin: 8px 0;
+}
+.evt-text .evt-content h1, .evt-text .evt-content h2,
+.evt-text .evt-content h3, .evt-text .evt-content h4 {
+  color: #f1f5f9;
+  margin: 12px 0 6px;
+}
+.evt-text .evt-content table {
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.evt-text .evt-content th, .evt-text .evt-content td {
+  border: 1px solid #444;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.evt-text .evt-content th { background: #333; }
+
+/* Result banner */
+.evt-result {
+  border-left-color: #22c55e;
+  background: #1a2e1a;
+}
+.evt-result.evt-error {
+  border-left-color: #ef4444;
+  background: #2e1a1a;
+}
+.evt-result .evt-result-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.evt-result .evt-result-header .evt-icon { font-size: 16px; }
+.evt-result:not(.evt-error) .evt-result-header { color: #86efac; }
+.evt-result.evt-error .evt-result-header { color: #fca5a5; }
+.evt-result .evt-result-stats {
+  display: flex;
+  gap: 16px;
+  padding: 0 14px 10px;
+  font-size: 12px;
+  color: #888;
+}
+.evt-result .evt-result-stats .stat-value { color: #ccc; font-weight: 500; }
+
+/* Thinking/progress indicator */
+.evt-thinking {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  color: #888;
+  font-size: 12px;
+}
+.evt-thinking .spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #444;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Toast notifications */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 12px 16px;
+  min-width: 280px;
+  max-width: 380px;
+  pointer-events: auto;
+  animation: toastIn 0.3s ease;
+  border-left: 4px solid #3b82f6;
+}
+.toast.completed { border-left-color: #22c55e; }
+.toast.failed { border-left-color: #ef4444; }
+.toast.started { border-left-color: #3b82f6; }
+.toast-exit { animation: toastOut 0.3s ease forwards; }
+@keyframes toastIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(40px); } }
+.toast-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+.toast-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #888;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.toast-close:hover { color: #333; }
+.toast-body {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toast-action {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #3b82f6;
+  background: #eff6ff;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+}
+.toast-action:hover { background: #dbeafe; }
+</style>
+</head>
+<body>
+
+<header>Research Dashboard</header>
+
+<div class="container">
+  <div class="sidebar">
+    <div class="query-form">
+      <textarea id="queryInput" placeholder="Enter a research query..."></textarea>
+      <div class="form-row">
+        <select id="modelSelect">
+          <option value="opus">opus</option>
+          <option value="sonnet">sonnet</option>
+          <option value="haiku">haiku</option>
+        </select>
+        <button id="submitBtn" onclick="submitQuery()">Start Research</button>
+      </div>
+    </div>
+
+    <div class="section-label">Active Jobs</div>
+    <div id="activeJobs" class="job-list"></div>
+
+    <div class="section-label">Past Runs</div>
+    <div id="pastRuns" class="job-list"></div>
+  </div>
+
+  <div class="main-panel" id="mainPanel">
+    <div class="empty-state" id="emptyState">Submit a query or select a run to get started.</div>
+  </div>
+</div>
+
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="/static/shared.js"></script>
+<script>
+const state = {
+  jobs: [],
+  pastRuns: [],
+  selectedId: null,
+  selectedType: null, // 'job'
+  viewMode: 'output',
+  // Per-job cache: { [jobId]: { events, status, query, outputDir, resultInfo, autoScroll } }
+  jobCache: {},
+  // SSE connection for selected job only
+  eventSource: null,
+};
+
+let listTimer = null;
+let detailTimer = null;
+
+function getJobCache(id) {
+  if (!state.jobCache[id]) {
+    state.jobCache[id] = { events: [], status: null, query: '', outputDir: null, resultInfo: null, autoScroll: true };
+  }
+  return state.jobCache[id];
+}
+
+// --- Event rendering ---
+
+function renderEvent(evt) {
+  // Skip text_delta and tool_start — these are streaming partials
+  if (evt.subtype === 'text_delta' || evt.subtype === 'tool_start') return '';
+
+  if (evt.type === 'assistant' && evt.subtype === 'text') {
+    if (!evt.text || !evt.text.trim()) return '';
+    return `<div class="evt-card evt-text">
+      <div class="evt-content">${renderMarkdown(evt.text)}</div>
+    </div>`;
+  }
+
+  if (evt.type === 'assistant' && evt.subtype === 'tool_use') {
+    const icon = getToolIcon(evt.tool_name);
+    const preview = getToolPreview(evt.tool_name, evt.tool_input);
+    const inputStr = evt.tool_input ? JSON.stringify(evt.tool_input, null, 2) : '';
+    return `<div class="evt-card evt-tool-call" onclick="this.classList.toggle('expanded')">
+      <div class="evt-header">
+        <span class="evt-icon">${icon}</span>
+        <span class="evt-title">${escapeHtml(evt.tool_name)}</span>
+        <span class="evt-preview">${escapeHtml(preview)}</span>
+        <span class="evt-chevron">\u25B6</span>
+      </div>
+      <div class="evt-body">${escapeHtml(inputStr)}</div>
+    </div>`;
+  }
+
+  if (evt.type === 'user' && evt.subtype === 'tool_result') {
+    const isError = evt.is_error;
+    const text = evt.tool_result || '';
+    const previewText = truncate(text.split('\n')[0], 80);
+    const errorCls = isError ? ' evt-error' : '';
+    const icon = isError ? '\u274C' : '\u2705';
+    return `<div class="evt-card evt-tool-result${errorCls}" onclick="this.classList.toggle('expanded')">
+      <div class="evt-header">
+        <span class="evt-icon">${icon}</span>
+        <span class="evt-title">${isError ? 'Error' : 'Result'}</span>
+        <span class="evt-preview">${escapeHtml(previewText)}</span>
+        <span class="evt-chevron">\u25B6</span>
+      </div>
+      <div class="evt-body">${escapeHtml(text)}</div>
+    </div>`;
+  }
+
+  if (evt.type === 'result') {
+    const isError = evt.is_error;
+    const errorCls = isError ? ' evt-error' : '';
+    const icon = isError ? '\u274C' : '\u2705';
+    const label = isError ? 'Failed' : 'Completed';
+    let stats = '';
+    if (evt.cost_usd || evt.num_turns || evt.duration_ms) {
+      stats = '<div class="evt-result-stats">';
+      if (evt.num_turns) stats += `<span>Turns: <span class="stat-value">${evt.num_turns}</span></span>`;
+      if (evt.duration_ms) stats += `<span>Duration: <span class="stat-value">${formatDuration(evt.duration_ms)}</span></span>`;
+      if (evt.duration_api_ms) stats += `<span>API time: <span class="stat-value">${formatDuration(evt.duration_api_ms)}</span></span>`;
+      if (evt.cost_usd) stats += `<span>Cost: <span class="stat-value">${formatCost(evt.cost_usd)}</span></span>`;
+      if (evt.usage) {
+        const u = evt.usage;
+        if (u.input_tokens) stats += `<span>In: <span class="stat-value">${(u.input_tokens/1000).toFixed(0)}k</span></span>`;
+        if (u.output_tokens) stats += `<span>Out: <span class="stat-value">${(u.output_tokens/1000).toFixed(0)}k</span></span>`;
+      }
+      stats += '</div>';
+    }
+    return `<div class="evt-card evt-result${errorCls}">
+      <div class="evt-result-header">
+        <span class="evt-icon">${icon}</span>
+        <span>${label}</span>
+      </div>
+      ${stats}
+    </div>`;
+  }
+
+  // System or raw — skip silently
+  return '';
+}
+
+function renderStructuredOutput(events, isRunning) {
+  const el = document.getElementById('outputView');
+  if (!el) return;
+
+  let html = events.map(renderEvent).join('');
+
+  if (isRunning) {
+    let progressText = 'Thinking...';
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i];
+      if (e.subtype === 'tool_start' || (e.type === 'assistant' && e.subtype === 'tool_use')) {
+        progressText = getToolIcon(e.tool_name) + ' ' + e.tool_name + '...';
+        break;
+      }
+    }
+    html += `<div class="evt-thinking"><div class="spinner"></div><span>${escapeHtml(progressText)}</span></div>`;
+  }
+
+  el.innerHTML = html;
+
+  const cache = state.selectedId ? state.jobCache[state.selectedId] : null;
+  if (cache ? cache.autoScroll : true) {
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+// --- Rendering ---
+
+function renderSidebar() {
+  const activeEl = document.getElementById('activeJobs');
+  const pastEl = document.getElementById('pastRuns');
+
+  // Active jobs
+  if (state.jobs.length === 0) {
+    activeEl.innerHTML = '<div style="padding: 10px 16px; color: #aaa; font-size: 13px;">No active jobs</div>';
+  } else {
+    activeEl.innerHTML = state.jobs.map(j => {
+      const isSelected = state.selectedType === 'job' && state.selectedId === j.id;
+      const isRunning = j.status === 'running' || j.status === 'pending';
+      const model = j.model || 'opus';
+      const elapsed = isRunning ? formatElapsed(j.created_at) : '';
+      const progress = isRunning && j.max_turns > 0 ? Math.min(100, Math.round((j.num_turns / j.max_turns) * 100)) : 0;
+
+      let metaParts = [`<span class="model-badge ${model}">${model}</span>`];
+      metaParts.push(j.status);
+      if (isRunning && j.num_turns > 0) {
+        metaParts.push(`${j.num_turns}/${j.max_turns} turns`);
+      }
+      if (elapsed) metaParts.push(elapsed);
+      if (!isRunning) metaParts.push(`${j.output_lines} events`);
+
+      let progressBar = '';
+      if (isRunning) {
+        progressBar = `<div class="job-progress"><div class="job-progress-fill" style="width:${progress}%"></div></div>`;
+      }
+
+      return `
+        <div class="job-item ${isSelected ? 'selected' : ''}"
+             onclick="selectJob('${j.id}')">
+          <div class="status-dot ${j.status}"></div>
+          <div class="job-info">
+            <div class="job-query">${escapeHtml(truncate(j.query, 60))}</div>
+            <div class="job-meta">${metaParts.join(' &middot; ')}</div>
+            ${progressBar}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Past runs
+  if (state.pastRuns.length === 0) {
+    pastEl.innerHTML = '<div style="padding: 10px 16px; color: #aaa; font-size: 13px;">No past runs found</div>';
+  } else {
+    pastEl.innerHTML = state.pastRuns.map(r => {
+      const parsed = parseDirName(r.name);
+      return `
+        <div class="job-item"
+             onclick="selectPastRun('${escapeAttr(r.name)}', ${r.has_report})">
+          <div class="status-dot ${r.has_report ? 'completed' : 'pending'}"></div>
+          <div class="job-info">
+            <div class="job-query">${escapeHtml(parsed.topic)}</div>
+            <div class="job-meta">${parsed.date || r.name}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+function renderJobPanel(detail) {
+  const panel = document.getElementById('mainPanel');
+  const cache = getJobCache(detail.id);
+  const isRunning = detail.status === 'running' || detail.status === 'pending';
+  const hasOutputDir = !!detail.output_dir;
+
+  let statusText = detail.status;
+  if (cache.resultInfo && cache.resultInfo.num_turns) {
+    statusText += ' \u00B7 ' + cache.resultInfo.num_turns + ' turns';
+  }
+  statusText += ' \u00B7 ' + detail.events.length + ' events';
+
+  let toolbar = `<div class="panel-toolbar">
+    <span class="toolbar-title">${escapeHtml(truncate(detail.query, 80))}</span>
+    <span class="toolbar-status">${statusText}</span>`;
+
+  if (isRunning) {
+    toolbar += `<button class="btn btn-danger" onclick="doCancel('${detail.id}')">Cancel</button>`;
+  }
+  if (detail.status === 'completed' && hasOutputDir) {
+    toolbar += `<a class="btn btn-primary" href="/reader?jobId=${encodeURIComponent(detail.id)}">View Report</a>`;
+    toolbar += `<a class="btn" href="/reader?jobId=${encodeURIComponent(detail.id)}&view=files">Sources</a>`;
+  }
+  toolbar += '</div>';
+
+  panel.innerHTML = toolbar + `<div class="output-view" id="outputView"></div>`;
+
+  const outputEl = document.getElementById('outputView');
+  if (outputEl) {
+    outputEl.onscroll = () => {
+      const atBottom = outputEl.scrollHeight - outputEl.scrollTop - outputEl.clientHeight < 40;
+      cache.autoScroll = atBottom;
+    };
+  }
+
+  renderStructuredOutput(detail.events, isRunning);
+}
+
+function renderJobToolbar() {
+  const toolbar = document.querySelector('.panel-toolbar');
+  if (!toolbar || state.selectedType !== 'job') return;
+
+  const cache = state.jobCache[state.selectedId];
+  if (!cache) return;
+
+  const isRunning = cache.status === 'running' || cache.status === 'pending';
+
+  let statusText = cache.status || '';
+  if (cache.resultInfo && cache.resultInfo.num_turns) {
+    statusText += ' \u00B7 ' + cache.resultInfo.num_turns + ' turns';
+  }
+  statusText += ' \u00B7 ' + cache.events.length + ' events';
+
+  const statusEl = toolbar.querySelector('.toolbar-status');
+  if (statusEl) statusEl.textContent = statusText;
+
+  // Add report/sources links when completed
+  if (!isRunning && cache.outputDir && !toolbar.querySelector('.btn-primary')) {
+    const reportLink = document.createElement('a');
+    reportLink.className = 'btn btn-primary';
+    reportLink.textContent = 'View Report';
+    reportLink.href = `/reader?jobId=${encodeURIComponent(state.selectedId)}`;
+    toolbar.appendChild(reportLink);
+
+    const srcLink = document.createElement('a');
+    srcLink.className = 'btn';
+    srcLink.textContent = 'Sources';
+    srcLink.href = `/reader?jobId=${encodeURIComponent(state.selectedId)}&view=files`;
+    toolbar.appendChild(srcLink);
+  }
+
+  // Remove cancel button when no longer running
+  if (!isRunning) {
+    const cancelBtn = toolbar.querySelector('.btn-danger');
+    if (cancelBtn) cancelBtn.remove();
+  }
+}
+
+// --- SSE ---
+
+function connectSSE(jobId) {
+  disconnectSSE();
+
+  const cache = getJobCache(jobId);
+  const after = cache.events.length;
+  const es = new EventSource(`/research/${jobId}/stream?after=${after}`);
+  state.eventSource = es;
+
+  es.onmessage = (e) => {
+    try {
+      const evt = JSON.parse(e.data);
+      cache.events.push(evt);
+
+      // Cap events to prevent unbounded memory growth
+      const MAX_EVENTS = 10000;
+      if (cache.events.length > MAX_EVENTS) {
+        cache.events = [
+          ...cache.events.slice(0, 100),
+          ...cache.events.slice(-(MAX_EVENTS - 100)),
+        ];
+      }
+
+      // Track result info
+      if (evt.type === 'result') {
+        cache.resultInfo = evt;
+      }
+
+      // Only update DOM if this is the selected job
+      if (state.selectedId === jobId && state.selectedType === 'job') {
+        const outputEl = document.getElementById('outputView');
+        if (outputEl && state.viewMode === 'output') {
+          // Remove thinking indicator if present
+          const thinkEl = outputEl.querySelector('.evt-thinking');
+          if (thinkEl) thinkEl.remove();
+
+          const html = renderEvent(evt);
+          if (html) {
+            outputEl.insertAdjacentHTML('beforeend', html);
+          }
+
+          // Re-add thinking indicator if still running
+          const isRunning = cache.status === 'running' || cache.status === 'pending';
+          if (isRunning) {
+            let progressText = 'Thinking...';
+            if (evt.type === 'assistant' && (evt.subtype === 'tool_use' || evt.subtype === 'tool_start')) {
+              progressText = getToolIcon(evt.tool_name) + ' ' + evt.tool_name + '...';
+            }
+            outputEl.insertAdjacentHTML('beforeend',
+              `<div class="evt-thinking"><div class="spinner"></div><span>${escapeHtml(progressText)}</span></div>`
+            );
+          }
+
+          if (cache.autoScroll) {
+            outputEl.scrollTop = outputEl.scrollHeight;
+          }
+        }
+
+        renderJobToolbar();
+      }
+    } catch (err) {
+      console.warn('SSE parse error:', err, e.data);
+    }
+  };
+
+  es.addEventListener('done', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      cache.status = data.status;
+      cache.outputDir = data.output_dir || null;
+    } catch (err) {
+      console.warn('SSE done event parse error:', err, e.data);
+    }
+
+    disconnectSSE();
+
+    if (state.selectedId === jobId && state.selectedType === 'job') {
+      // Remove thinking indicator
+      const outputEl = document.getElementById('outputView');
+      if (outputEl) {
+        const thinkEl = outputEl.querySelector('.evt-thinking');
+        if (thinkEl) thinkEl.remove();
+      }
+
+      renderJobToolbar();
+    }
+
+    pollList(); // Refresh sidebar
+  });
+
+  es.onerror = () => {
+    // EventSource auto-reconnects; if job is done the 'done' event handles cleanup
+  };
+}
+
+function disconnectSSE() {
+  if (state.eventSource) {
+    state.eventSource.close();
+    state.eventSource = null;
+  }
+}
+
+// --- Job selection ---
+
+async function selectJob(id) {
+  disconnectSSE();
+  clearTimeout(detailTimer);
+
+  state.selectedId = id;
+  state.selectedType = 'job';
+  state.viewMode = 'output';
+  renderSidebar();
+
+  const cache = getJobCache(id);
+
+  // If we have cached events, render immediately from cache
+  if (cache.events.length > 0) {
+    cache.autoScroll = true;
+    const detail = {
+      id,
+      query: cache.query,
+      status: cache.status || 'pending',
+      output_dir: cache.outputDir,
+      events: cache.events,
+    };
+    renderJobPanel(detail);
+
+    const isRunning = cache.status === 'running' || cache.status === 'pending';
+    if (isRunning) {
+      connectSSE(id);
+    }
+    return;
+  }
+
+  // No cache — fetch full detail from server
+  try {
+    const detail = await fetchJob(id);
+    cache.status = detail.status;
+    cache.query = detail.query;
+    cache.outputDir = detail.output_dir;
+    cache.events = detail.events || [];
+    cache.resultInfo = detail.result_info;
+    cache.autoScroll = true;
+
+    renderJobPanel(detail);
+
+    if (detail.status === 'running' || detail.status === 'pending') {
+      connectSSE(id);
+    }
+  } catch (e) {
+    const panel = document.getElementById('mainPanel');
+    panel.innerHTML = `<div class="empty-state">Failed to load job: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function selectPastRun(name, hasReport) {
+  if (hasReport) {
+    window.location.href = `/reader?run=${encodeURIComponent(name)}`;
+  } else {
+    // No report — try files view
+    window.location.href = `/reader?run=${encodeURIComponent(name)}&view=files`;
+  }
+}
+
+// --- Actions ---
+
+async function submitQuery() {
+  const input = document.getElementById('queryInput');
+  const model = document.getElementById('modelSelect').value;
+  const query = input.value.trim();
+  if (!query) return;
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+
+  try {
+    const job = await startJob(query, model);
+    input.value = '';
+
+    // Initialize cache for new job
+    const cache = getJobCache(job.id);
+    cache.status = job.status;
+    cache.query = query;
+
+    await pollList();
+
+    // If we're currently watching a running job, stay on it
+    const currentCache = state.selectedId && state.selectedType === 'job' ? state.jobCache[state.selectedId] : null;
+    const currentlyWatching = currentCache && (currentCache.status === 'running' || currentCache.status === 'pending');
+
+    if (currentlyWatching) {
+      // Stay on current job, show toast about new job starting
+      showToast({ query, id: job.id }, 'started');
+    } else {
+      // Nothing important selected — switch to new job
+      state.selectedId = job.id;
+      state.selectedType = 'job';
+      state.viewMode = 'output';
+      renderSidebar();
+      const detail = { id: job.id, query, status: job.status, output_dir: null, events: [] };
+      renderJobPanel(detail);
+      connectSSE(job.id);
+    }
+  } catch (e) {
+    alert('Failed to start research: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function doCancel(id) {
+  try {
+    await cancelJob(id);
+    const cache = getJobCache(id);
+    cache.status = 'cancelled';
+    disconnectSSE();
+    renderJobToolbar();
+    pollList();
+  } catch (e) {
+    alert('Failed to cancel: ' + e.message);
+  }
+}
+
+// --- Polling (sidebar only — detail uses SSE) ---
+
+async function pollList() {
+  try {
+    const oldStatuses = new Map(state.jobs.map(j => [j.id, j.status]));
+    const data = await fetchList();
+    state.jobs = data.active || [];
+    state.pastRuns = data.past || [];
+
+    // Detect background job completions and update cache
+    for (const job of state.jobs) {
+      const prev = oldStatuses.get(job.id);
+      if (prev && prev === 'running' && job.status !== 'running' && job.id !== state.selectedId) {
+        showToast(job, job.status === 'completed' ? 'completed' : 'failed');
+      }
+      // Keep cache in sync with polling data
+      if (state.jobCache[job.id]) {
+        state.jobCache[job.id].status = job.status;
+        if (job.output_dir) state.jobCache[job.id].outputDir = job.output_dir;
+      }
+    }
+
+    renderSidebar();
+  } catch (e) {
+    // Silently retry on next poll
+  }
+}
+
+function startPolling() {
+  pollList();
+  listTimer = setInterval(pollList, 5000);
+}
+
+function stopPolling() {
+  clearInterval(listTimer);
+  clearTimeout(detailTimer);
+  disconnectSSE();
+}
+
+// Pause polling when tab is hidden
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopPolling();
+  } else {
+    startPolling();
+    // Reconnect SSE if we have a running job selected
+    if (state.selectedType === 'job' && state.selectedId && state.viewMode === 'output') {
+      const cache = state.jobCache[state.selectedId];
+      const isRunning = cache && (cache.status === 'running' || cache.status === 'pending');
+      if (isRunning && !state.eventSource) {
+        connectSSE(state.selectedId);
+      }
+    }
+  }
+});
+
+// Keyboard shortcut: Ctrl+Enter or Cmd+Enter to submit
+document.getElementById('queryInput').addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    submitQuery();
+  }
+});
+
+// --- Toast notifications ---
+
+function showToast(job, type) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+
+  const icon = type === 'completed' ? '\u2705' : type === 'failed' ? '\u274C' : '\uD83D\uDE80';
+  const label = type === 'completed' ? 'Completed' : type === 'failed' ? 'Failed' : 'Started';
+
+  let actionHtml = '';
+  if (job.id) {
+    if (type === 'completed') {
+      actionHtml = `<a class="toast-action" href="/reader?jobId=${encodeURIComponent(job.id)}">View Report</a>`;
+    } else {
+      actionHtml = `<button class="toast-action" onclick="selectJob('${job.id}'); this.parentElement.remove();">View</button>`;
+    }
+  }
+
+  toast.innerHTML = `
+    <div class="toast-header">
+      <span>${icon} Research ${label}</span>
+      <button class="toast-close" onclick="this.parentElement.parentElement.remove()">&times;</button>
+    </div>
+    <div class="toast-body">${escapeHtml(truncate(job.query, 80))}</div>
+    ${actionHtml}
+  `;
+
+  container.appendChild(toast);
+
+  // Auto-dismiss after 8 seconds
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.classList.add('toast-exit');
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, 8000);
+}
+
+// --- Init ---
+startPolling();
+</script>
+</body>
+</html>
