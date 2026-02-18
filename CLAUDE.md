@@ -12,6 +12,8 @@ go test ./internal/server/ -v       # Run a single package's tests
 go test ./internal/parser/ -run Test_ParseStreamLine_Assistant -v  # Run a single test
 go vet ./...                        # Static analysis
 go run . --port 8421 --cwd /tmp     # Run the server locally
+docker compose up --build           # Build and run in Docker
+docker compose up -d                # Run in background
 ```
 
 Flags: `--port` (default 8420), `--host` (default 0.0.0.0), `--cwd` (default ~/research), `--claude-path` (default "claude").
@@ -60,6 +62,10 @@ Embedded resources: `static/*` (web UI), `research-config/agents/*` (agent defin
 ### Research Plugin Source
 
 Agent definitions in `research-config/agents/` and the orchestration prompt in `internal/runner/prompt.md` originate from the `deep-research@prial-plugins` Claude Code plugin (`~/.claude/plugins/cache/prial-plugins/deep-research/`). The binary is self-contained — no external plugin install needed.
+
+### Docker Setup
+
+Multi-stage `Dockerfile`: stage 1 (`golang:1.25-alpine`) compiles a static binary with `CGO_ENABLED=0`, stage 2 (`node:20-slim`) installs the Claude CLI npm package and copies the binary. Runtime uses `node:20-slim` (not alpine) because Claude CLI has native dependencies that require glibc. `docker-compose.yml` mounts `./research-data:/research` for persistent output, reads `ANTHROPIC_API_KEY` from `.env`, and has a commented-out OAuth mount option. `.dockerignore` keeps the build context clean.
 
 ### Route Conflict Workaround
 

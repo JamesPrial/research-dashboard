@@ -1,0 +1,14 @@
+services:
+  research-dashboard:
+    build: .
+    ports:
+      - "8420:8420"
+    volumes:
+      - ./research-data:/research
+      # Uncomment for OAuth auth (Pro/Max plan) instead of API key:
+      # - ~/.claude:/home/researcher/.claude:ro
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    env_file:
+      - .env
+    restart: unless-stopped

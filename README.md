@@ -9,6 +9,8 @@ A web dashboard for managing [Claude Code](https://docs.anthropic.com/en/docs/cl
 
 ## Quick Start
 
+### Local
+
 ```bash
 go build -o research-dashboard .
 ./research-dashboard
@@ -16,7 +18,17 @@ go build -o research-dashboard .
 
 Open http://localhost:8420 in your browser.
 
-The dashboard expects a working directory (default `~/research`) where Claude will create `research-*` output directories containing reports and source files.
+### Docker
+
+```bash
+cp .env.example .env
+# Edit .env with your ANTHROPIC_API_KEY
+docker compose up
+```
+
+Open http://localhost:8420. Research output is persisted to `./research-data/`.
+
+The dashboard expects a working directory (default `~/research`, `/research` in Docker) where Claude will create `research-*` output directories containing reports and source files.
 
 ### Flags
 
@@ -26,6 +38,13 @@ The dashboard expects a working directory (default `~/research`) where Claude wi
 | `--host` | `0.0.0.0` | Bind address |
 | `--cwd` | `~/research` | Working directory for research output |
 | `--claude-path` | `claude` | Path to the Claude Code CLI binary |
+
+### Docker Authentication
+
+Two methods are supported:
+
+1. **API Key (recommended)**: Set `ANTHROPIC_API_KEY` in your `.env` file. The Claude CLI picks this up automatically.
+2. **OAuth (Pro/Max plan)**: If already logged in on your host, uncomment the `~/.claude` volume mount in `docker-compose.yml` to share your auth session.
 
 ## How It Works
 
@@ -81,3 +100,19 @@ go run . --port 9000 --cwd /tmp/research
 ```
 
 The project has zero external dependencies — only the Go standard library.
+
+### Docker
+
+```bash
+# Build and run
+docker compose up --build
+
+# Run in background
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
