@@ -26,6 +26,10 @@ if [ "$(id -u)" = "0" ]; then
     # Home dir chown may partially fail if .claude is mounted read-only.
     chown -R researcher:researcher /home/researcher 2>/dev/null || true
 
+    # Pre-create directories the app needs (Unraid FUSE may block chown on mount points).
+    mkdir -p /research/.claude/agents
+    chown -R researcher:researcher /research/.claude
+
     exec gosu researcher research-dashboard "$@"
 fi
 
