@@ -36,6 +36,16 @@ PORT=9000 docker compose up
 
 The dashboard expects a working directory (default `~/research`, `/research` in Docker) where Claude will create `research-*` output directories containing reports and source files.
 
+### Unraid
+
+1. In the Unraid Docker tab, click **Add Container**
+2. Set the repository to `jamesprial/research-dashboard:latest`
+3. Or use the template from `unraid/research-dashboard.xml` (add this repo as a template repository in Community Applications)
+4. Set your `ANTHROPIC_API_KEY`
+5. The default PUID (99) and PGID (100) match Unraid's `nobody:users`
+
+The container supports `PUID`/`PGID` environment variables for file permission mapping, matching the convention used by linuxserver.io images.
+
 ### Flags
 
 | Flag | Default | Description |

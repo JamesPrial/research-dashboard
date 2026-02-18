@@ -11,6 +11,9 @@ services:
       # - ~/.claude:/home/researcher/.claude:ro
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Uncomment to set container user/group IDs (required for Unraid):
+      # - PUID=99
+      # - PGID=100
     env_file:
       - path: .env
         required: false

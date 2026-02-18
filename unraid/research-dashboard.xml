@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>research-dashboard</Name>
+  <Repository>jamesprial/research-dashboard:latest</Repository>
+  <Registry>https://hub.docker.com/r/jamesprial/research-dashboard/</Registry>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/JamesPrial/research-dashboard/issues</Support>
+  <Project>https://github.com/JamesPrial/research-dashboard</Project>
+  <Overview>A web dashboard for managing Claude Code research jobs. Submit research queries, watch Claude work in real time via SSE streaming, and browse generated reports with cited sources. Requires an Anthropic API key.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8420]</WebUI>
+  <Icon>https://raw.githubusercontent.com/JamesPrial/research-dashboard/main/unraid/icon.png</Icon>
+  <Network>bridge</Network>
+  <Requires>An Anthropic API key is required. Get one at https://console.anthropic.com/</Requires>
+  <ExtraParams/>
+  <PostArgs/>
+  <DonateText/>
+  <DonateLink/>
+  <DonateImg/>
+
+  <!-- Port: Web UI -->
+  <Config Name="Web UI Port" Target="8420" Default="8420" Mode="tcp"
+    Description="Port for the research dashboard web interface."
+    Type="Port" Display="always" Required="true" Mask="false">8420</Config>
+
+  <!-- Volume: Research data -->
+  <Config Name="Research Data" Target="/research" Default="/mnt/user/appdata/research-dashboard/data"
+    Mode="rw" Description="Directory where research output is stored."
+    Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/research-dashboard/data</Config>
+
+  <!-- Volume: Claude OAuth config (optional) -->
+  <Config Name="Claude Config" Target="/home/researcher/.claude" Default=""
+    Mode="ro" Description="(Optional) Path to your .claude config directory for OAuth authentication. Leave empty to use API key instead."
+    Type="Path" Display="always" Required="false" Mask="false"></Config>
+
+  <!-- Environment: Anthropic API Key -->
+  <Config Name="Anthropic API Key" Target="ANTHROPIC_API_KEY" Default=""
+    Description="Your Anthropic API key (starts with sk-ant-). Required unless using OAuth via the Claude Config mount."
+    Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <!-- Environment: PUID -->
+  <Config Name="PUID" Target="PUID" Default="99"
+    Description="User ID for file permissions. Default 99 is the Unraid nobody user."
+    Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+
+  <!-- Environment: PGID -->
+  <Config Name="PGID" Target="PGID" Default="100"
+    Description="Group ID for file permissions. Default 100 is the Unraid users group."
+    Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+</Container>
