@@ -65,7 +65,7 @@ Agent definitions in `research-config/agents/` and the orchestration prompt in `
 
 ### Docker Setup
 
-Multi-stage `Dockerfile`: stage 1 (`golang:1.25-alpine`) compiles a static binary with `CGO_ENABLED=0`, stage 2 (`node:20-slim`) installs the Claude CLI npm package and copies the binary. Runtime uses `node:20-slim` (not alpine) because Claude CLI has native dependencies that require glibc. `docker-compose.yml` mounts `./research-data:/research` for persistent output, reads `ANTHROPIC_API_KEY` from `.env`, and has a commented-out OAuth mount option. `.dockerignore` keeps the build context clean.
+Multi-stage `Dockerfile`: stage 1 (`golang:1.25-alpine`) compiles a static binary with `CGO_ENABLED=0`, stage 2 (`node:20-slim`) installs the Claude CLI npm package and copies the binary. Runtime uses `node:20-slim` (not alpine) because Claude CLI has native dependencies that require glibc. `docker-compose.yml` mounts `./research-data:/research` for persistent output, reads `ANTHROPIC_API_KEY` from `.env`, and has a commented-out OAuth mount option. The `PORT` env var (default 8420) configures both the host port mapping and the binary's `--port` flag via the compose `command` override. `.dockerignore` keeps the build context clean.
 
 ### Route Conflict Workaround
 

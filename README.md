@@ -22,11 +22,17 @@ Open http://localhost:8420 in your browser.
 
 ```bash
 cp .env.example .env
-# Edit .env with your ANTHROPIC_API_KEY
+# Edit .env with your ANTHROPIC_API_KEY (and optionally PORT)
 docker compose up
 ```
 
 Open http://localhost:8420. Research output is persisted to `./research-data/`.
+
+To run on a different port:
+
+```bash
+PORT=9000 docker compose up
+```
 
 The dashboard expects a working directory (default `~/research`, `/research` in Docker) where Claude will create `research-*` output directories containing reports and source files.
 
@@ -107,6 +113,9 @@ The project has zero external dependencies — only the Go standard library.
 # Build and run
 docker compose up --build
 
+# Run on a custom port
+PORT=9000 docker compose up --build
+
 # Run in background
 docker compose up -d
 
@@ -116,3 +125,5 @@ docker compose logs -f
 # Stop
 docker compose down
 ```
+
+The `PORT` variable (default `8420`) configures both the host port mapping and the server's listen port inside the container. Set it in `.env` or pass it inline.
