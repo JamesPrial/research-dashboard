@@ -27,4 +27,5 @@ WORKDIR /research
 
 EXPOSE 8420
 
-ENTRYPOINT ["research-dashboard", "--cwd", "/research", "--claude-path", "claude"]
+ENTRYPOINT ["research-dashboard"]
+CMD ["--cwd", "/research", "--claude-path", "claude"]
