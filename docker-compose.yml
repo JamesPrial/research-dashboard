@@ -10,5 +10,6 @@ services:
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
     env_file:
-      - .env
+      - path: .env
+        required: false
     restart: unless-stopped
