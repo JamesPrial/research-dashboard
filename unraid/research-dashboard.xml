@@ -31,7 +31,7 @@
 
   <!-- Volume: Claude OAuth config (optional) -->
   <Config Name="Claude Config" Target="/home/researcher/.claude" Default=""
-    Mode="ro" Description="(Optional) Path to your .claude config directory for OAuth authentication. Leave empty to use API key instead."
+    Mode="rw" Description="(Optional) Path to your .claude config directory for OAuth authentication. Leave empty to use API key instead."
     Type="Path" Display="always" Required="false" Mask="false"></Config>
 
   <!-- Environment: Anthropic API Key -->
