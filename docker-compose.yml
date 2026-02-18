@@ -2,8 +2,8 @@ services:
   research-dashboard:
     build: .
     ports:
-      - "${PORT:-8420}:${PORT:-8420}"
-    command: ["--cwd", "/research", "--claude-path", "claude", "--port", "${PORT:-8420}"]
+      - "8420:8420"
+    command: ["--cwd", "/research", "--claude-path", "claude", "--port", "8420"]
     volumes:
       - ./research-data:/research
       # Uncomment for OAuth auth (Pro/Max plan) instead of API key:
