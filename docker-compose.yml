@@ -1,6 +1,7 @@
 services:
   research-dashboard:
-    build: .
+    image: jamesprial/research-dashboard:latest
+    # build: .  # Uncomment for local builds from Dockerfile
     ports:
       - "8420:8420"
     command: ["--cwd", "/research", "--claude-path", "claude", "--port", "8420"]
