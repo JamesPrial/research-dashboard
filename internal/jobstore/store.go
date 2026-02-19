@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,7 +119,7 @@ func (s *Store) PastRuns(cwd string) []model.PastRun {
 			continue
 		}
 		name := entry.Name()
-		if len(name) < len("research-") || name[:len("research-")] != "research-" {
+		if !strings.HasPrefix(name, model.ResearchDirPrefix) {
 			continue
 		}
 		dir := filepath.Join(cwd, name)
@@ -347,7 +348,16 @@ func (j *Job) EventsSince(cursor int) []model.ParsedEvent {
 func (j *Job) NumTurns() int {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
+	return j.numTurnsLocked()
+}
 
+// ---------------------------------------------------------------------------
+// Conversion methods
+// ---------------------------------------------------------------------------
+
+// numTurnsLocked counts events whose Type is assistant and Subtype is text.
+// Caller must hold j.mu.
+func (j *Job) numTurnsLocked() int {
 	count := 0
 	for _, evt := range j.events {
 		if evt.Type == model.EventTypeAssistant && evt.Subtype == model.SubtypeText {
@@ -357,40 +367,40 @@ func (j *Job) NumTurns() int {
 	return count
 }
 
-// ---------------------------------------------------------------------------
-// Conversion methods
-// ---------------------------------------------------------------------------
-
-// ToStatus returns a model.JobStatus snapshot of the current job state.
-// OutputDir is represented as a *string and is nil when the field is empty.
-func (j *Job) ToStatus() model.JobStatus {
-	j.mu.RLock()
-	defer j.mu.RUnlock()
-
-	var outputDir *string
-	if j.outputDir != "" {
-		v := j.outputDir
-		outputDir = &v
+// outputDirPtrLocked returns nil if j.outputDir is empty, otherwise returns a
+// pointer to a copy of the value.
+// Caller must hold j.mu.
+func (j *Job) outputDirPtrLocked() *string {
+	if j.outputDir == "" {
+		return nil
 	}
+	v := j.outputDir
+	return &v
+}
 
-	numTurns := 0
-	for _, evt := range j.events {
-		if evt.Type == model.EventTypeAssistant && evt.Subtype == model.SubtypeText {
-			numTurns++
-		}
-	}
-
+// toStatusLocked builds and returns a model.JobStatus from the current job
+// state without acquiring the lock.
+// Caller must hold j.mu.
+func (j *Job) toStatusLocked() model.JobStatus {
 	return model.JobStatus{
 		ID:          j.id,
 		Query:       j.query,
 		Model:       model.ModelName(j.model),
 		Status:      j.status,
 		CreatedAt:   j.createdAt.Format(time.RFC3339),
-		OutputDir:   outputDir,
+		OutputDir:   j.outputDirPtrLocked(),
 		OutputLines: len(j.events),
-		NumTurns:    numTurns,
+		NumTurns:    j.numTurnsLocked(),
 		MaxTurns:    j.maxTurns,
 	}
+}
+
+// ToStatus returns a model.JobStatus snapshot of the current job state.
+// OutputDir is represented as a *string and is nil when the field is empty.
+func (j *Job) ToStatus() model.JobStatus {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.toStatusLocked()
 }
 
 // ToDetail returns a model.JobDetail that embeds a JobStatus and includes
@@ -401,30 +411,7 @@ func (j *Job) ToDetail() model.JobDetail {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 
-	var outputDir *string
-	if j.outputDir != "" {
-		v := j.outputDir
-		outputDir = &v
-	}
-
-	numTurns := 0
-	for _, evt := range j.events {
-		if evt.Type == model.EventTypeAssistant && evt.Subtype == model.SubtypeText {
-			numTurns++
-		}
-	}
-
-	status := model.JobStatus{
-		ID:          j.id,
-		Query:       j.query,
-		Model:       model.ModelName(j.model),
-		Status:      j.status,
-		CreatedAt:   j.createdAt.Format(time.RFC3339),
-		OutputDir:   outputDir,
-		OutputLines: len(j.events),
-		NumTurns:    numTurns,
-		MaxTurns:    j.maxTurns,
-	}
+	status := j.toStatusLocked()
 
 	// Convert events; always return a non-nil slice so JSON serializes as [].
 	events := make([]map[string]any, 0, len(j.events))

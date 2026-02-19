@@ -17,12 +17,19 @@ import (
 	"github.com/jamesprial/research-dashboard/internal/server"
 )
 
+// noopRunner satisfies the server.JobRunner interface without launching any subprocess.
+type noopRunner struct{}
+
+func (noopRunner) Run(_ context.Context, _ *jobstore.Job, _ *jobstore.Store) error {
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
 // newTestServer constructs a server with a MapFS, a temp dir as cwd, and a
-// nil runner (no subprocesses started in tests).
+// noopRunner (no subprocesses started in tests).
 func newTestServer(t *testing.T) (*server.Server, *jobstore.Store, string) {
 	t.Helper()
 
@@ -36,7 +43,7 @@ func newTestServer(t *testing.T) (*server.Server, *jobstore.Store, string) {
 	cwd := t.TempDir()
 	ctx := context.Background()
 
-	srv := server.New(store, nil, staticFS, cwd, ctx)
+	srv := server.New(store, noopRunner{}, staticFS, cwd, ctx)
 	return srv, store, cwd
 }
 

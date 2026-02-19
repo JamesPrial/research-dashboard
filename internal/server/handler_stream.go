@@ -16,10 +16,8 @@ import (
 // The connection is held open and polled every 300ms until the job reaches
 // a terminal state or either the server or request context is cancelled.
 func (s *Server) handleStreamResearch(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	job, ok := s.store.Get(id)
+	job, ok := s.lookupJob(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
 

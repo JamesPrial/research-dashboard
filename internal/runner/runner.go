@@ -38,6 +38,11 @@ type Runner struct {
 	ClaudePath string
 }
 
+// DirClaimer atomically claims a research output directory.
+type DirClaimer interface {
+	ClaimDir(dir string) bool
+}
+
 // New creates a Runner. If claudePath is empty, the binary name defaults to
 // "claude".
 func New(claudePath string) *Runner {
@@ -111,6 +116,12 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 	const bufSize = 512 * 1024
 	scanner.Buffer(make([]byte, bufSize), bufSize)
 
+	// Track whether we received a result event indicating successful completion.
+	// The CLI may exit non-zero (e.g. exit code 2 for max turns reached) even
+	// when the research completed successfully and a result was emitted.
+	gotResult := false
+	resultIsError := false
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		events := parser.ParseStreamLine(line, &counter)
@@ -127,9 +138,13 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 			}
 
 			// Capture result stats from result events.
-			if evt.Type == model.EventTypeResult && evt.Raw != nil {
-				stats := extractResultStats(evt.Raw)
-				job.SetResultInfo(stats)
+			if evt.Type == model.EventTypeResult {
+				gotResult = true
+				resultIsError = evt.IsError
+				if evt.Raw != nil {
+					stats := extractResultStats(evt.Raw)
+					job.SetResultInfo(stats)
+				}
 			}
 		}
 	}
@@ -166,9 +181,18 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 		slog.Info("runner: claimed output dir", "job_id", job.ID(), "dir", newDir)
 	}
 
-	if exitCode == 0 {
+	// A job is considered successful if:
+	//   - the subprocess exited cleanly (exit code 0), OR
+	//   - we received a result event that was not an error (the CLI may exit
+	//     non-zero for non-fatal reasons, e.g. exit code 2 for max turns reached).
+	if exitCode == 0 || (gotResult && !resultIsError) {
 		job.SetStatus(model.StatusCompleted)
-		slog.Info("runner: job completed", "job_id", job.ID())
+		if exitCode != 0 {
+			slog.Info("runner: job completed (non-zero exit ignored, got successful result)",
+				"job_id", job.ID(), "exit_code", exitCode)
+		} else {
+			slog.Info("runner: job completed", "job_id", job.ID())
+		}
 	} else {
 		job.SetStatus(model.StatusFailed)
 		errMsg := strings.TrimSpace(stderrBuf.String())
@@ -199,7 +223,7 @@ func researchDirs(dir string) map[string]time.Time {
 		if !entry.IsDir() {
 			continue
 		}
-		if !strings.HasPrefix(entry.Name(), "research-") {
+		if !strings.HasPrefix(entry.Name(), model.ResearchDirPrefix) {
 			continue
 		}
 		absPath := filepath.Join(dir, entry.Name())
@@ -216,7 +240,7 @@ func researchDirs(dir string) map[string]time.Time {
 // atomically claims the newest unclaimed new directory via the store, and
 // returns its path. Returns an empty string if no new unclaimed directory
 // is found.
-func detectNewOutputDir(pre, post map[string]time.Time, store *jobstore.Store) string {
+func detectNewOutputDir(pre, post map[string]time.Time, claimer DirClaimer) string {
 	// Collect directories that are new (present after run but not before).
 	var candidates []string
 	for path := range post {
@@ -236,7 +260,7 @@ func detectNewOutputDir(pre, post map[string]time.Time, store *jobstore.Store) s
 	// Claim the first directory that has not yet been claimed by another job.
 	// store.ClaimDir is the atomic test-and-set for ownership.
 	for _, path := range candidates {
-		if store.ClaimDir(path) {
+		if claimer.ClaimDir(path) {
 			return path
 		}
 		// Already claimed by another job — try the next candidate.

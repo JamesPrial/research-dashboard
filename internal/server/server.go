@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jamesprial/research-dashboard/internal/jobstore"
-	"github.com/jamesprial/research-dashboard/internal/runner"
 )
 
 // maxJobAge is the duration after which completed, failed, or cancelled jobs
@@ -24,10 +23,15 @@ const maxJobAge = 24 * time.Hour
 // GET /research/{id}/files/{path...} wildcard pattern.
 const pastRunPrefix = "/research/past/"
 
+// JobRunner launches a research job subprocess.
+type JobRunner interface {
+	Run(ctx context.Context, job *jobstore.Job, store *jobstore.Store) error
+}
+
 // Server holds dependencies and the HTTP mux.
 type Server struct {
 	store    *jobstore.Store
-	runner   *runner.Runner
+	runner   JobRunner
 	staticFS fs.FS
 	cwd      string
 	mux      *http.ServeMux
@@ -36,7 +40,7 @@ type Server struct {
 
 // New creates a Server, registers all routes, and returns it.
 // ctx is used to signal SSE connections to close when the server shuts down.
-func New(store *jobstore.Store, runner *runner.Runner, staticFS fs.FS, cwd string, ctx context.Context) *Server {
+func New(store *jobstore.Store, runner JobRunner, staticFS fs.FS, cwd string, ctx context.Context) *Server {
 	s := &Server{
 		store:    store,
 		runner:   runner,
@@ -92,4 +96,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // writeError writes a JSON error response with the given status code and message.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// lookupJob retrieves a job by path ID, writing a 404 error response if not found.
+func (s *Server) lookupJob(w http.ResponseWriter, r *http.Request) (*jobstore.Job, bool) {
+	id := r.PathValue("id")
+	job, ok := s.store.Get(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, "job not found")
+		return nil, false
+	}
+	return job, true
 }

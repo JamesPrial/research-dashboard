@@ -37,14 +37,12 @@ func (s *Server) handleStartResearch(w http.ResponseWriter, r *http.Request) {
 
 	job := s.store.Create(id, req.Query, string(req.Model), req.MaxTurns, cwd)
 
-	if s.runner != nil {
-		go func() {
-			ctx := context.Background()
-			if err := s.runner.Run(ctx, job, s.store); err != nil {
-				slog.Error("job failed", "id", id, "err", err)
-			}
-		}()
-	}
+	go func() {
+		ctx := context.Background()
+		if err := s.runner.Run(ctx, job, s.store); err != nil {
+			slog.Error("job failed", "id", id, "err", err)
+		}
+	}()
 
 	writeJSON(w, http.StatusCreated, job.ToStatus())
 }
@@ -66,10 +64,8 @@ func (s *Server) handleListResearch(w http.ResponseWriter, r *http.Request) {
 // handleGetResearch handles GET /research/{id}.
 // It returns the full job detail for the requested job.
 func (s *Server) handleGetResearch(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	job, ok := s.store.Get(id)
+	job, ok := s.lookupJob(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, job.ToDetail())
@@ -78,10 +74,8 @@ func (s *Server) handleGetResearch(w http.ResponseWriter, r *http.Request) {
 // handleCancelResearch handles DELETE /research/{id}.
 // It sets the job status to cancelled and returns the updated status.
 func (s *Server) handleCancelResearch(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	job, ok := s.store.Get(id)
+	job, ok := s.lookupJob(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
 	job.SetStatus(model.StatusCancelled)
@@ -91,10 +85,8 @@ func (s *Server) handleCancelResearch(w http.ResponseWriter, r *http.Request) {
 // handleGetReport handles GET /research/{id}/report.
 // It reads report.md from the job's output directory and returns its contents.
 func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	job, ok := s.store.Get(id)
+	job, ok := s.lookupJob(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
 	outputDir := job.OutputDir()

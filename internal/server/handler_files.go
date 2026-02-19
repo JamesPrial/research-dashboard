@@ -16,10 +16,8 @@ import (
 // It returns a FileListResponse describing the files in the job's output
 // directory.
 func (s *Server) handleListJobFiles(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	job, ok := s.store.Get(id)
+	job, ok := s.lookupJob(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
 	outputDir := job.OutputDir()
@@ -35,10 +33,8 @@ func (s *Server) handleListJobFiles(w http.ResponseWriter, r *http.Request) {
 // It serves a specific file from the job's output directory with path
 // traversal protection.
 func (s *Server) handleGetJobFile(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	job, ok := s.store.Get(id)
+	job, ok := s.lookupJob(w, r)
 	if !ok {
-		writeError(w, http.StatusNotFound, "job not found")
 		return
 	}
 	outputDir := job.OutputDir()

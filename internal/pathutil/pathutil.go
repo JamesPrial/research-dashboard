@@ -24,7 +24,7 @@ func ValidateDirName(name string) error {
 	if strings.Contains(name, "..") {
 		return errors.New("directory name must not contain \"..\"")
 	}
-	if !strings.HasPrefix(name, "research-") {
+	if !strings.HasPrefix(name, model.ResearchDirPrefix) {
 		return errors.New("directory name must start with \"research-\"")
 	}
 	return nil

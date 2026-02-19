@@ -36,6 +36,9 @@ func TestMain(m *testing.M) {
 	case "outputdir":
 		fakeClaudeOutputDir()
 		os.Exit(0)
+	case "maxturns":
+		fakeClaudeMaxTurns()
+		os.Exit(2)
 	default:
 		// Normal test run — execute all tests.
 		os.Exit(m.Run())
@@ -64,6 +67,20 @@ func fakeClaudeFailure() {
 func fakeClaudeSlow() {
 	// Sleep for 30s; the test will cancel the context well before this.
 	time.Sleep(30 * time.Second)
+}
+
+// fakeClaudeMaxTurns emits a successful result event and exits with code 2,
+// simulating the claude CLI behavior when max turns is reached.
+func fakeClaudeMaxTurns() {
+	lines := []string{
+		`{"type":"system","subtype":"init","session_id":"sess-maxturns-789"}`,
+		`{"type":"assistant","message":{"content":[{"type":"text","text":"Working on research..."}]}}`,
+		`{"type":"result","result":"Research complete (max turns reached).","is_error":false,"total_cost_usd":0.12,"duration_ms":5000,"duration_api_ms":4000,"num_turns":10,"session_id":"sess-maxturns-789"}`,
+	}
+	for _, line := range lines {
+		fmt.Println(line)
+	}
+	fmt.Fprintln(os.Stderr, "Max turns reached")
 }
 
 // fakeClaudeOutputDir creates a research-* directory in the cwd before emitting events.
@@ -401,6 +418,45 @@ func Test_Run_PreExistingDirsNotClaimed(t *testing.T) {
 	outputDir := job.OutputDir()
 	if outputDir == preExisting {
 		t.Errorf("OutputDir() = %q, should not be the pre-existing directory", outputDir)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: Non-zero exit with successful result → completed
+// ---------------------------------------------------------------------------
+
+func Test_Run_NonZeroExitWithSuccessfulResult(t *testing.T) {
+	setSubprocessBehavior(t, "maxturns")
+
+	cwd := t.TempDir()
+	r := newTestRunner(t)
+	store, job := newJob(t, cwd)
+
+	ctx := context.Background()
+	if err := r.Run(ctx, job, store); err != nil {
+		t.Fatalf("Run() returned unexpected error: %v", err)
+	}
+
+	// Status should be completed even though exit code was 2, because
+	// the result event had is_error: false.
+	if job.Status() != model.StatusCompleted {
+		t.Errorf("Status() = %q, want %q", job.Status(), model.StatusCompleted)
+	}
+
+	// Session ID should be set.
+	if job.SessionID() != "sess-maxturns-789" {
+		t.Errorf("SessionID() = %q, want %q", job.SessionID(), "sess-maxturns-789")
+	}
+
+	// ResultInfo should be populated.
+	info := job.ResultInfo()
+	if info.CostUSD == nil || *info.CostUSD != 0.12 {
+		t.Errorf("ResultInfo().CostUSD = %v, want 0.12", info.CostUSD)
+	}
+
+	// Error should not be set on a completed job.
+	if job.Error() != "" {
+		t.Errorf("Error() = %q, want empty string", job.Error())
 	}
 }
 

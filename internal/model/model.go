@@ -63,6 +63,9 @@ const (
 	FileTypeOther FileType = "other"
 )
 
+// ResearchDirPrefix is the required prefix for research output directory names.
+const ResearchDirPrefix = "research-"
+
 // ---------------------------------------------------------------------------
 // ValidModel
 // ---------------------------------------------------------------------------
@@ -201,14 +204,9 @@ func (d JobDetail) MarshalJSON() ([]byte, error) {
 		Error      *string          `json:"error,omitempty"`
 	}
 
-	events := d.Events
-	if events == nil {
-		events = []map[string]any{}
-	}
-
 	a := jobDetailAlias{
 		JobStatus:  d.JobStatus,
-		Events:     events,
+		Events:     nilToEmpty(d.Events),
 		SessionID:  d.SessionID,
 		ResultInfo: d.ResultInfo,
 		Error:      d.Error,
@@ -245,16 +243,10 @@ func (jl JobList) MarshalJSON() ([]byte, error) {
 		Past   []PastRun   `json:"past"`
 	}
 
-	active := jl.Active
-	if active == nil {
-		active = []JobStatus{}
-	}
-	past := jl.Past
-	if past == nil {
-		past = []PastRun{}
-	}
-
-	return json.Marshal(jobListAlias{Active: active, Past: past})
+	return json.Marshal(jobListAlias{
+		Active: nilToEmpty(jl.Active),
+		Past:   nilToEmpty(jl.Past),
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -291,21 +283,25 @@ func (flr FileListResponse) MarshalJSON() ([]byte, error) {
 		SourceIndex *string     `json:"source_index,omitempty"`
 	}
 
-	files := flr.Files
-	if files == nil {
-		files = []FileEntry{}
-	}
-	sources := flr.Sources
-	if sources == nil {
-		sources = []FileEntry{}
-	}
-
 	return json.Marshal(fileListAlias{
 		DirName:     flr.DirName,
-		Files:       files,
-		Sources:     sources,
+		Files:       nilToEmpty(flr.Files),
+		Sources:     nilToEmpty(flr.Sources),
 		SourceIndex: flr.SourceIndex,
 	})
+}
+
+// ---------------------------------------------------------------------------
+// nilToEmpty
+// ---------------------------------------------------------------------------
+
+// nilToEmpty returns s if non-nil, or an initialized empty slice of the same type.
+// This ensures JSON serialization produces [] rather than null.
+func nilToEmpty[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
 
 // ---------------------------------------------------------------------------
