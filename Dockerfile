@@ -1,6 +1,10 @@
 # Stage 1: Build the Go binary
 FROM golang:1.25-alpine AS builder
 
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+ARG TARGETVARIANT
+
 WORKDIR /build
 
 COPY go.mod ./
@@ -9,7 +13,9 @@ COPY internal/ internal/
 COPY static/ static/
 COPY research-config/ research-config/
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o research-dashboard .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    GOARM=${TARGETVARIANT#v} \
+    go build -o research-dashboard .
 
 # Stage 2: Runtime with Node.js (required for Claude CLI)
 FROM node:20-slim
