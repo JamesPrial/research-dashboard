@@ -67,6 +67,7 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 
 	// Snapshot existing research-* directories before the subprocess runs.
 	preDirs := researchDirs(cwd)
+	slog.Debug("runner: pre-run directory snapshot", "job_id", job.ID(), "count", len(preDirs))
 
 	// Build the command arguments.
 	query := fmt.Sprintf("%s%s", PromptPrefix, job.Query())
@@ -79,6 +80,8 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 		"--max-turns", fmt.Sprintf("%d", job.MaxTurns()),
 		query,
 	}
+
+	slog.Debug("runner: starting subprocess", "job_id", job.ID(), "claude_path", r.ClaudePath, "cwd", cwd, "model", job.Model())
 
 	cmd := exec.CommandContext(ctx, r.ClaudePath, args...)
 
@@ -133,6 +136,7 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 				if sid, ok := evt.Raw["session_id"]; ok {
 					if sidStr, ok := sid.(string); ok && sidStr != "" {
 						job.SetSessionID(sidStr)
+						slog.Debug("runner: captured session_id", "job_id", job.ID(), "session_id", sidStr)
 					}
 				}
 			}
@@ -141,11 +145,15 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 			if evt.Type == model.EventTypeResult {
 				gotResult = true
 				resultIsError = evt.IsError
+				slog.Debug("runner: received result event", "job_id", job.ID(), "is_error", evt.IsError)
 				if evt.Raw != nil {
 					stats := extractResultStats(evt.Raw)
 					job.SetResultInfo(stats)
 				}
 			}
+		}
+		if len(events) > 0 {
+			slog.Debug("runner: parsed events", "job_id", job.ID(), "count", len(events))
 		}
 	}
 
@@ -175,6 +183,7 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 
 	// Detect new output directory produced by the subprocess.
 	postDirs := researchDirs(cwd)
+	slog.Debug("runner: post-run directory snapshot", "job_id", job.ID(), "count", len(postDirs))
 	if newDir := detectNewOutputDir(preDirs, postDirs, store); newDir != "" {
 		// detectNewOutputDir already claimed the directory atomically.
 		job.SetOutputDir(newDir)

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -25,6 +26,7 @@ func (s *Server) handleStreamResearch(w http.ResponseWriter, r *http.Request) {
 	if v := r.URL.Query().Get("after"); v != "" {
 		after, _ = strconv.Atoi(v)
 	}
+	slog.Debug("SSE stream opened", "job_id", r.PathValue("id"), "cursor", after)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

@@ -36,6 +36,7 @@ func (s *Server) handleStartResearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job := s.store.Create(id, req.Query, string(req.Model), req.MaxTurns, cwd)
+	slog.Debug("job created", "id", id, "model", string(req.Model), "max_turns", req.MaxTurns)
 
 	go func() {
 		ctx := context.Background()
@@ -79,6 +80,7 @@ func (s *Server) handleCancelResearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job.SetStatus(model.StatusCancelled)
+	slog.Debug("job cancelled", "id", r.PathValue("id"))
 	writeJSON(w, http.StatusOK, job.ToStatus())
 }
 

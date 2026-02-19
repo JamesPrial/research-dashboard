@@ -3,6 +3,7 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -178,5 +179,6 @@ func serveFile(w http.ResponseWriter, r *http.Request, baseDir, filePath string)
 		writeError(w, http.StatusBadRequest, "invalid file path")
 		return
 	}
+	slog.Debug("serving file", "base_dir", baseDir, "file_path", filePath, "resolved", resolved)
 	http.ServeFile(w, r, resolved)
 }

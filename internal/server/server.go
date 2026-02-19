@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -57,6 +58,7 @@ func New(store *jobstore.Store, runner JobRunner, staticFS fs.FS, cwd string, ct
 // before reaching the mux to avoid registration conflicts with the
 // /research/{id}/files/{path...} wildcard pattern.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	slog.Debug("http request", "method", r.Method, "path", r.URL.Path)
 	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, pastRunPrefix) {
 		s.handlePastRuns(w, r)
 		return

@@ -31,6 +31,7 @@ type config struct {
 	host       string
 	cwd        string
 	claudePath string
+	logLevel   string
 }
 
 func defaultConfig() config {
@@ -40,6 +41,7 @@ func defaultConfig() config {
 		host:       "0.0.0.0",
 		cwd:        filepath.Join(home, "research"),
 		claudePath: "claude",
+		logLevel:   "info",
 	}
 }
 
@@ -50,6 +52,7 @@ func main() {
 	flag.StringVar(&cfg.host, "host", cfg.host, "server host")
 	flag.StringVar(&cfg.cwd, "cwd", cfg.cwd, "working directory for research runs")
 	flag.StringVar(&cfg.claudePath, "claude-path", cfg.claudePath, "path to the claude binary")
+	flag.StringVar(&cfg.logLevel, "log-level", cfg.logLevel, "log level: debug, info, warn, error")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -65,6 +68,12 @@ func main() {
 // If addrCh is non-nil, the bound address is sent after the listener starts
 // (used by tests with port 0).
 func run(ctx context.Context, cfg config, addrCh chan<- string) error {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(cfg.logLevel)); err != nil {
+		return fmt.Errorf("invalid log level %q: %w", cfg.logLevel, err)
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+
 	// Validate cwd exists.
 	info, err := os.Stat(cfg.cwd)
 	if err != nil {
