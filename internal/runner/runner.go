@@ -81,13 +81,6 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 		query,
 	}
 
-	// Pass the API key via CLI flag if available. The env var is already set
-	// via FilteredEnv(), but some Claude CLI versions in Docker do not read
-	// it reliably.
-	if apiKey := envutil.ResolvedAPIKey(); apiKey != "" {
-		args = append([]string{"--api-key", apiKey}, args...)
-	}
-
 	slog.Debug("runner: starting subprocess", "job_id", job.ID(), "claude_path", r.ClaudePath, "cwd", cwd, "model", job.Model())
 
 	cmd := exec.CommandContext(ctx, r.ClaudePath, args...)

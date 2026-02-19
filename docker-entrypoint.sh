@@ -30,6 +30,36 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p /research/.claude/agents
     chown -R researcher:researcher /research/.claude
 
+    # --- Claude CLI headless auth setup ---
+    # The Claude CLI has interactive gates (onboarding, API key approval) that
+    # block non-interactive (-p) usage. Pre-create config files to bypass them.
+    # See: https://github.com/anthropics/claude-code/issues/551
+    RESOLVED_KEY="${MAX_API_KEY:-$ANTHROPIC_API_KEY}"
+    CLAUDE_HOME="/home/researcher"
+
+    if [ -n "$RESOLVED_KEY" ]; then
+        # 1. Mark onboarding as completed to skip interactive setup.
+        cat > "$CLAUDE_HOME/.claude.json" <<ENDJSON
+{"hasCompletedOnboarding": true}
+ENDJSON
+
+        # 2. Set up apiKeyHelper — the most reliable cross-version auth method.
+        #    This shell script simply echoes the resolved API key.
+        mkdir -p "$CLAUDE_HOME/.claude"
+        cat > "$CLAUDE_HOME/.claude/get-api-key.sh" <<'ENDSCRIPT'
+#!/bin/bash
+echo "${MAX_API_KEY:-$ANTHROPIC_API_KEY}"
+ENDSCRIPT
+        chmod +x "$CLAUDE_HOME/.claude/get-api-key.sh"
+
+        # 3. Point settings.json at the helper script.
+        cat > "$CLAUDE_HOME/.claude/settings.json" <<ENDJSON
+{"apiKeyHelper": "$CLAUDE_HOME/.claude/get-api-key.sh"}
+ENDJSON
+
+        chown -R researcher:researcher "$CLAUDE_HOME/.claude" "$CLAUDE_HOME/.claude.json"
+    fi
+
     exec gosu researcher research-dashboard "$@"
 fi
 
