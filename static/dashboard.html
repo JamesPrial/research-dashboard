@@ -378,6 +378,29 @@
   to { transform: rotate(360deg); }
 }
 
+/* Error banner for failed jobs */
+.error-banner {
+  border-left: 3px solid #ef4444;
+  background: #2e1a1a;
+  border-radius: 4px;
+  margin: 0 16px 12px;
+}
+.error-banner-header {
+  padding: 10px 14px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fca5a5;
+}
+.error-banner-body {
+  padding: 6px 14px 10px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #fca5a5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Toast notifications */
 .toast-container {
   position: fixed;
@@ -499,7 +522,7 @@ let detailTimer = null;
 
 function getJobCache(id) {
   if (!state.jobCache[id]) {
-    state.jobCache[id] = { events: [], status: null, query: '', outputDir: null, resultInfo: null, autoScroll: true };
+    state.jobCache[id] = { events: [], status: null, query: '', outputDir: null, resultInfo: null, error: null, autoScroll: true };
   }
   return state.jobCache[id];
 }
@@ -696,7 +719,15 @@ function renderJobPanel(detail) {
   }
   toolbar += '</div>';
 
-  panel.innerHTML = toolbar + `<div class="output-view" id="outputView"></div>`;
+  let errorHtml = '';
+  if (detail.error) {
+    errorHtml = `<div class="error-banner">
+      <div class="error-banner-header">Error</div>
+      <div class="error-banner-body">${escapeHtml(detail.error)}</div>
+    </div>`;
+  }
+
+  panel.innerHTML = toolbar + errorHtml + `<div class="output-view" id="outputView"></div>`;
 
   const outputEl = document.getElementById('outputView');
   if (outputEl) {
@@ -873,6 +904,7 @@ async function selectJob(id) {
       query: cache.query,
       status: cache.status || 'pending',
       output_dir: cache.outputDir,
+      error: cache.error,
       events: cache.events,
     };
     renderJobPanel(detail);
@@ -890,6 +922,7 @@ async function selectJob(id) {
     cache.status = detail.status;
     cache.query = detail.query;
     cache.outputDir = detail.output_dir;
+    cache.error = detail.error || null;
     cache.events = detail.events || [];
     cache.resultInfo = detail.result_info;
     cache.autoScroll = true;
