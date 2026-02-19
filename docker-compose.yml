@@ -11,6 +11,8 @@ services:
       # - ~/.claude:/home/researcher/.claude
     environment:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Uncomment to change log verbosity (debug, info, warn, error):
+      # - LOG_LEVEL=debug
       # Uncomment to set container user/group IDs (required for Unraid):
       # - PUID=99
       # - PGID=100

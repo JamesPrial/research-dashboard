@@ -145,6 +145,40 @@ func Test_DefaultConfig(t *testing.T) {
 	}
 }
 
+func Test_DefaultConfig_LogLevelEnvVar(t *testing.T) {
+	t.Run("LOG_LEVEL env var is respected", func(t *testing.T) {
+		t.Setenv("LOG_LEVEL", "debug")
+		cfg := defaultConfig()
+		if cfg.logLevel != "debug" {
+			t.Errorf("logLevel = %q, want %q", cfg.logLevel, "debug")
+		}
+	})
+
+	t.Run("empty LOG_LEVEL falls back to info", func(t *testing.T) {
+		t.Setenv("LOG_LEVEL", "")
+		cfg := defaultConfig()
+		if cfg.logLevel != "info" {
+			t.Errorf("logLevel = %q, want %q", cfg.logLevel, "info")
+		}
+	})
+
+	t.Run("invalid LOG_LEVEL is passed through and caught by run", func(t *testing.T) {
+		t.Setenv("LOG_LEVEL", "bogus")
+		cfg := defaultConfig()
+		if cfg.logLevel != "bogus" {
+			t.Errorf("logLevel = %q, want %q", cfg.logLevel, "bogus")
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err := run(ctx, cfg, nil)
+		if err == nil {
+			t.Error("run() returned nil, want error for invalid LOG_LEVEL")
+		}
+	})
+}
+
 func Test_Run_InvalidLogLevel_ReturnsError(t *testing.T) {
 	tests := []struct {
 		name     string

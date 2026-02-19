@@ -36,12 +36,16 @@ type config struct {
 
 func defaultConfig() config {
 	home, _ := os.UserHomeDir()
+	logLevel := "info"
+	if v := os.Getenv("LOG_LEVEL"); v != "" {
+		logLevel = v
+	}
 	return config{
 		port:       8420,
 		host:       "0.0.0.0",
 		cwd:        filepath.Join(home, "research"),
 		claudePath: "claude",
-		logLevel:   "info",
+		logLevel:   logLevel,
 	}
 }
 
