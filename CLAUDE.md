@@ -49,7 +49,7 @@ Embedded resources: `static/*` (web UI), `research-config/agents/*` (agent defin
 
 **`internal/pathutil`** — Path traversal prevention (`ResolveSafeFile`) and directory name validation (must start with `research-`, no `/`, `\`, `..`).
 
-**`internal/envutil`** — Filters `CLAUDE*` variables from the environment before passing to subprocesses.
+**`internal/envutil`** — Filters `CLAUDE*` variables from the environment before passing to subprocesses. Also handles API key priority: if `MAX_API_KEY` is set, it replaces `ANTHROPIC_API_KEY` in the subprocess environment.
 
 ### Test Patterns
 

@@ -39,6 +39,11 @@
     Description="Your Anthropic API key (starts with sk-ant-). Required unless using OAuth via the Claude Config mount."
     Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
+  <!-- Environment: Max API Key (optional, overrides Anthropic API Key) -->
+  <Config Name="Max API Key" Target="MAX_API_KEY" Default=""
+    Description="(Optional) Max plan API key. If set, takes priority over the Anthropic API Key."
+    Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
   <!-- Environment: PUID -->
   <Config Name="PUID" Target="PUID" Default="99"
     Description="User ID for file permissions. Default 99 is the Unraid nobody user."

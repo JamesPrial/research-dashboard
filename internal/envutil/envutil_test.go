@@ -34,9 +34,8 @@ func envContainsExact(env []string, entry string) bool {
 	return false
 }
 
-// clearCLAUDEVars unsets any pre-existing CLAUDE-prefixed vars so that
-// tests run in a clean environment. We track which vars we cleared so we
-// can report if any leaked in.
+// clearCLAUDEVars unsets any pre-existing CLAUDE-prefixed vars and API key
+// vars so that tests run in a clean environment.
 func clearCLAUDEVars(t *testing.T) {
 	t.Helper()
 	for _, e := range os.Environ() {
@@ -44,6 +43,12 @@ func clearCLAUDEVars(t *testing.T) {
 			k, _, _ := strings.Cut(e, "=")
 			t.Setenv(k, "") // register for cleanup
 			_ = os.Unsetenv(k) // actually remove it
+		}
+	}
+	for _, key := range []string{"MAX_API_KEY", "ANTHROPIC_API_KEY"} {
+		if _, ok := os.LookupEnv(key); ok {
+			t.Setenv(key, "")
+			_ = os.Unsetenv(key)
 		}
 	}
 }
@@ -222,6 +227,7 @@ func Test_FilteredEnv_Cases(t *testing.T) {
 		setVars     map[string]string // vars to set before calling FilteredEnv
 		wantPresent []string          // keys expected in result
 		wantAbsent  []string          // keys expected NOT in result
+		wantExact   []string          // exact KEY=VALUE entries expected
 	}{
 		{
 			name:        "no CLAUDE vars set",
@@ -265,6 +271,30 @@ func Test_FilteredEnv_Cases(t *testing.T) {
 			wantPresent: nil,
 			wantAbsent:  []string{"CLAUDE_EMPTY"},
 		},
+		{
+			name:        "MAX_API_KEY overrides ANTHROPIC_API_KEY",
+			setVars:     map[string]string{"ANTHROPIC_API_KEY": "sk-ant-original", "MAX_API_KEY": "sk-ant-max"},
+			wantAbsent:  []string{"MAX_API_KEY"},
+			wantExact:   []string{"ANTHROPIC_API_KEY=sk-ant-max"},
+		},
+		{
+			name:        "MAX_API_KEY alone becomes ANTHROPIC_API_KEY",
+			setVars:     map[string]string{"MAX_API_KEY": "sk-ant-max-only"},
+			wantAbsent:  []string{"MAX_API_KEY"},
+			wantExact:   []string{"ANTHROPIC_API_KEY=sk-ant-max-only"},
+		},
+		{
+			name:        "ANTHROPIC_API_KEY passes through when no MAX_API_KEY",
+			setVars:     map[string]string{"ANTHROPIC_API_KEY": "sk-ant-original"},
+			wantAbsent:  []string{"MAX_API_KEY"},
+			wantExact:   []string{"ANTHROPIC_API_KEY=sk-ant-original"},
+		},
+		{
+			name:        "neither API key set means no ANTHROPIC_API_KEY in output",
+			setVars:     map[string]string{"TEST_OTHER": "value"},
+			wantPresent: []string{"TEST_OTHER"},
+			wantAbsent:  []string{"MAX_API_KEY", "ANTHROPIC_API_KEY"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -287,6 +317,30 @@ func Test_FilteredEnv_Cases(t *testing.T) {
 					t.Errorf("expected %q to be absent from filtered env", key)
 				}
 			}
+			for _, exact := range tt.wantExact {
+				if !envContainsExact(result, exact) {
+					t.Errorf("expected exact entry %q in filtered env", exact)
+				}
+			}
 		})
+	}
+}
+
+func Test_FilteredEnv_NoDuplicateAnthropicKey(t *testing.T) {
+	clearCLAUDEVars(t)
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-original")
+	t.Setenv("MAX_API_KEY", "sk-ant-max")
+
+	result := envutil.FilteredEnv()
+
+	count := 0
+	for _, e := range result {
+		k, _, _ := strings.Cut(e, "=")
+		if k == "ANTHROPIC_API_KEY" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 ANTHROPIC_API_KEY entry, got %d", count)
 	}
 }
