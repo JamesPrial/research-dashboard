@@ -8,7 +8,7 @@ ARG TARGETVARIANT
 WORKDIR /build
 
 COPY go.mod ./
-COPY main.go main_test.go ./
+COPY main.go ./
 COPY internal/ internal/
 COPY static/ static/
 COPY research-config/ research-config/

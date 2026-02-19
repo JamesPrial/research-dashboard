@@ -126,6 +126,7 @@ func Test_Run_WritesAgentConfigs(t *testing.T) {
 }
 
 func Test_DefaultConfig(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "")
 	cfg := defaultConfig()
 
 	if cfg.port != 8420 {
