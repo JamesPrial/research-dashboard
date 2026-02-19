@@ -326,6 +326,72 @@ func Test_FilteredEnv_Cases(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Test: ResolvedAPIKey
+// ---------------------------------------------------------------------------
+
+func Test_ResolvedAPIKey(t *testing.T) {
+	tests := []struct {
+		name         string
+		anthropicKey string
+		maxKey       string
+		setAnthropic bool
+		setMax       bool
+		want         string
+	}{
+		{
+			name: "neither set",
+			want: "",
+		},
+		{
+			name:         "only ANTHROPIC_API_KEY",
+			anthropicKey: "sk-ant-original",
+			setAnthropic: true,
+			want:         "sk-ant-original",
+		},
+		{
+			name:   "only MAX_API_KEY",
+			maxKey: "sk-ant-max",
+			setMax: true,
+			want:   "sk-ant-max",
+		},
+		{
+			name:         "both set — MAX wins",
+			anthropicKey: "sk-ant-original",
+			maxKey:       "sk-ant-max",
+			setAnthropic: true,
+			setMax:       true,
+			want:         "sk-ant-max",
+		},
+		{
+			name:         "MAX empty string falls back to ANTHROPIC",
+			anthropicKey: "sk-ant-original",
+			maxKey:       "",
+			setAnthropic: true,
+			setMax:       true,
+			want:         "sk-ant-original",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clearCLAUDEVars(t)
+
+			if tt.setAnthropic {
+				t.Setenv("ANTHROPIC_API_KEY", tt.anthropicKey)
+			}
+			if tt.setMax {
+				t.Setenv("MAX_API_KEY", tt.maxKey)
+			}
+
+			got := envutil.ResolvedAPIKey()
+			if got != tt.want {
+				t.Errorf("ResolvedAPIKey() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func Test_FilteredEnv_NoDuplicateAnthropicKey(t *testing.T) {
 	clearCLAUDEVars(t)
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-original")

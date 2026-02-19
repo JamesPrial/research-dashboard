@@ -6,6 +6,16 @@ import (
 	"strings"
 )
 
+// ResolvedAPIKey returns the API key that should be used for the Claude CLI
+// subprocess. MAX_API_KEY takes priority over ANTHROPIC_API_KEY. Returns an
+// empty string if neither is set.
+func ResolvedAPIKey() string {
+	if key := os.Getenv("MAX_API_KEY"); key != "" {
+		return key
+	}
+	return os.Getenv("ANTHROPIC_API_KEY")
+}
+
 // FilteredEnv returns the current environment with all CLAUDE-prefixed
 // variables removed and API key priority applied. The comparison is
 // case-sensitive — only uppercase "CLAUDE" prefix is stripped.
@@ -26,12 +36,8 @@ func FilteredEnv() []string {
 		result = append(result, entry)
 	}
 
-	// MAX_API_KEY takes priority over ANTHROPIC_API_KEY.
-	apiKey := os.Getenv("MAX_API_KEY")
-	if apiKey == "" {
-		apiKey = os.Getenv("ANTHROPIC_API_KEY")
-	}
-	if apiKey != "" {
+	// Append the resolved API key (MAX_API_KEY takes priority).
+	if apiKey := ResolvedAPIKey(); apiKey != "" {
 		result = append(result, "ANTHROPIC_API_KEY="+apiKey)
 	}
 
