@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,6 +25,24 @@ func (noopRunner) Run(_ context.Context, _ *jobstore.Job, _ *jobstore.Store) err
 	return nil
 }
 
+// blockingRunner blocks until its context is cancelled, then closes done.
+type blockingRunner struct{ done chan struct{} }
+
+func (b blockingRunner) Run(ctx context.Context, job *jobstore.Job, _ *jobstore.Store) error {
+	job.SetStatus(model.StatusRunning)
+	<-ctx.Done()
+	close(b.done)
+	return nil
+}
+
+// failingRunner simulates a runner that errors before reaching a terminal status.
+type failingRunner struct{}
+
+func (failingRunner) Run(_ context.Context, job *jobstore.Job, _ *jobstore.Store) error {
+	job.SetStatus(model.StatusRunning)
+	return errors.New("subprocess failed to start")
+}
+
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
@@ -31,6 +50,12 @@ func (noopRunner) Run(_ context.Context, _ *jobstore.Job, _ *jobstore.Store) err
 // newTestServer constructs a server with a MapFS, a temp dir as cwd, and a
 // noopRunner (no subprocesses started in tests).
 func newTestServer(t *testing.T) (*server.Server, *jobstore.Store, string) {
+	t.Helper()
+	return newTestServerWithRunner(t, noopRunner{})
+}
+
+// newTestServerWithRunner is newTestServer with a caller-supplied runner.
+func newTestServerWithRunner(t *testing.T, runner server.JobRunner) (*server.Server, *jobstore.Store, string) {
 	t.Helper()
 
 	staticFS := fstest.MapFS{
@@ -43,7 +68,7 @@ func newTestServer(t *testing.T) (*server.Server, *jobstore.Store, string) {
 	cwd := t.TempDir()
 	ctx := context.Background()
 
-	srv := server.New(store, noopRunner{}, staticFS, cwd, ctx)
+	srv := server.New(store, runner, staticFS, cwd, ctx)
 	return srv, store, cwd
 }
 
@@ -185,6 +210,89 @@ func Test_HandleStartResearch_InvalidJSON_Returns400(t *testing.T) {
 	}
 }
 
+func Test_HandleStartResearch_OversizedBody_Returns413(t *testing.T) {
+	srv, _, _ := newTestServer(t)
+	// Build a >1MB JSON body.
+	body := `{"query":"` + strings.Repeat("a", 1<<20+1024) + `","model":"opus","max_turns":10}`
+	rr := doRequest(t, srv, http.MethodPost, "/research", body)
+
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
+func Test_HandleStartResearch_CWDOutsideBase_Returns400(t *testing.T) {
+	srv, _, _ := newTestServer(t)
+	body := `{"query":"q","model":"opus","max_turns":10,"cwd":"/etc"}`
+	rr := doRequest(t, srv, http.MethodPost, "/research", body)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d; body: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+}
+
+func Test_HandleStartResearch_CWDTraversalEscape_Returns400(t *testing.T) {
+	srv, _, cwd := newTestServer(t)
+	body := `{"query":"q","model":"opus","max_turns":10,"cwd":"` + cwd + `/../outside"}`
+	rr := doRequest(t, srv, http.MethodPost, "/research", body)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d; body: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+}
+
+func Test_HandleStartResearch_CWDSubdirOfBase_Accepted(t *testing.T) {
+	srv, _, cwd := newTestServer(t)
+	subdir := filepath.Join(cwd, "project")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"query":"q","model":"opus","max_turns":10,"cwd":"` + subdir + `"}`
+	rr := doRequest(t, srv, http.MethodPost, "/research", body)
+
+	if rr.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d; body: %s", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+}
+
+func Test_HandleStartResearch_CWDNonExistent_Returns400(t *testing.T) {
+	srv, _, cwd := newTestServer(t)
+	body := `{"query":"q","model":"opus","max_turns":10,"cwd":"` + filepath.Join(cwd, "missing") + `"}`
+	rr := doRequest(t, srv, http.MethodPost, "/research", body)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d; body: %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+}
+
+func Test_HandleStartResearch_RunnerError_MarksJobFailed(t *testing.T) {
+	srv, store, _ := newTestServerWithRunner(t, failingRunner{})
+
+	rr := doRequest(t, srv, http.MethodPost, "/research", `{"query":"q","model":"opus","max_turns":10}`)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusCreated)
+	}
+	var status model.JobStatus
+	if err := json.Unmarshal(rr.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+
+	job, ok := store.Get(status.ID)
+	if !ok {
+		t.Fatal("job not found")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for job.Status() != model.StatusFailed {
+		if time.Now().After(deadline) {
+			t.Fatalf("job status = %q, want failed", job.Status())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if job.Error() == "" {
+		t.Error("job error is empty, want runner error message")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // GET /research
 // ---------------------------------------------------------------------------
@@ -323,6 +431,32 @@ func Test_HandleCancelResearch_ExistingJob_CancelsAndReturns200(t *testing.T) {
 	}
 }
 
+func Test_HandleCancelResearch_RunningJob_CancelsSubprocessContext(t *testing.T) {
+	done := make(chan struct{})
+	srv, _, _ := newTestServerWithRunner(t, blockingRunner{done: done})
+
+	rr := doRequest(t, srv, http.MethodPost, "/research", `{"query":"q","model":"opus","max_turns":10}`)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusCreated)
+	}
+	var status model.JobStatus
+	if err := json.Unmarshal(rr.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+
+	rr = doRequest(t, srv, http.MethodDelete, "/research/"+status.ID, "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	select {
+	case <-done:
+		// Runner observed context cancellation — the subprocess would be killed.
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner context was not cancelled within 2s of DELETE")
+	}
+}
+
 func Test_HandleCancelResearch_NonExistent_Returns404(t *testing.T) {
 	srv, _, _ := newTestServer(t)
 	rr := doRequest(t, srv, http.MethodDelete, "/research/no-such-job", "")
@@ -358,8 +492,8 @@ func Test_HandleGetPastReport_ExistingReport_ReturnsContent(t *testing.T) {
 		t.Errorf("body = %q, want %q", rr.Body.String(), reportContent)
 	}
 	ct := rr.Header().Get("Content-Type")
-	if !strings.Contains(ct, "text/plain") {
-		t.Errorf("Content-Type = %q, want text/plain", ct)
+	if !strings.Contains(ct, "text/markdown") {
+		t.Errorf("Content-Type = %q, want text/markdown", ct)
 	}
 }
 
@@ -746,6 +880,12 @@ func Test_HandleGetJobFile_ServesFile(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), content) {
 		t.Errorf("body does not contain file content: %q", rr.Body.String())
+	}
+	if csp := rr.Header().Get("Content-Security-Policy"); csp != "sandbox" {
+		t.Errorf("Content-Security-Policy = %q, want %q", csp, "sandbox")
+	}
+	if nosniff := rr.Header().Get("X-Content-Type-Options"); nosniff != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want %q", nosniff, "nosniff")
 	}
 }
 

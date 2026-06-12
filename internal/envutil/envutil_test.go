@@ -41,7 +41,7 @@ func clearCLAUDEVars(t *testing.T) {
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "CLAUDE") {
 			k, _, _ := strings.Cut(e, "=")
-			t.Setenv(k, "") // register for cleanup
+			t.Setenv(k, "")    // register for cleanup
 			_ = os.Unsetenv(k) // actually remove it
 		}
 	}
@@ -272,22 +272,22 @@ func Test_FilteredEnv_Cases(t *testing.T) {
 			wantAbsent:  []string{"CLAUDE_EMPTY"},
 		},
 		{
-			name:        "MAX_API_KEY overrides ANTHROPIC_API_KEY",
-			setVars:     map[string]string{"ANTHROPIC_API_KEY": "sk-ant-original", "MAX_API_KEY": "sk-ant-max"},
-			wantAbsent:  []string{"MAX_API_KEY"},
-			wantExact:   []string{"ANTHROPIC_API_KEY=sk-ant-max"},
+			name:       "MAX_API_KEY overrides ANTHROPIC_API_KEY",
+			setVars:    map[string]string{"ANTHROPIC_API_KEY": "sk-ant-original", "MAX_API_KEY": "sk-ant-max"},
+			wantAbsent: []string{"MAX_API_KEY"},
+			wantExact:  []string{"ANTHROPIC_API_KEY=sk-ant-max"},
 		},
 		{
-			name:        "MAX_API_KEY alone becomes ANTHROPIC_API_KEY",
-			setVars:     map[string]string{"MAX_API_KEY": "sk-ant-max-only"},
-			wantAbsent:  []string{"MAX_API_KEY"},
-			wantExact:   []string{"ANTHROPIC_API_KEY=sk-ant-max-only"},
+			name:       "MAX_API_KEY alone becomes ANTHROPIC_API_KEY",
+			setVars:    map[string]string{"MAX_API_KEY": "sk-ant-max-only"},
+			wantAbsent: []string{"MAX_API_KEY"},
+			wantExact:  []string{"ANTHROPIC_API_KEY=sk-ant-max-only"},
 		},
 		{
-			name:        "ANTHROPIC_API_KEY passes through when no MAX_API_KEY",
-			setVars:     map[string]string{"ANTHROPIC_API_KEY": "sk-ant-original"},
-			wantAbsent:  []string{"MAX_API_KEY"},
-			wantExact:   []string{"ANTHROPIC_API_KEY=sk-ant-original"},
+			name:       "ANTHROPIC_API_KEY passes through when no MAX_API_KEY",
+			setVars:    map[string]string{"ANTHROPIC_API_KEY": "sk-ant-original"},
+			wantAbsent: []string{"MAX_API_KEY"},
+			wantExact:  []string{"ANTHROPIC_API_KEY=sk-ant-original"},
 		},
 		{
 			name:        "neither API key set means no ANTHROPIC_API_KEY in output",

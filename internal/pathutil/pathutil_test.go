@@ -320,6 +320,83 @@ func Test_ResolveSafeFile_BaseDirTrailingSlash(t *testing.T) {
 	}
 }
 
+// Verify that a symlink inside the base directory pointing outside it is
+// rejected even though the lexical path stays within the base.
+func Test_ResolveSafeFile_SymlinkEscape(t *testing.T) {
+	baseDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	secret := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(secret, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// File symlink escaping the base.
+	if err := os.Symlink(secret, filepath.Join(baseDir, "link.txt")); err != nil {
+		t.Skipf("cannot create symlinks on this platform: %v", err)
+	}
+	if _, err := pathutil.ResolveSafeFile(baseDir, "link.txt"); err == nil {
+		t.Error("ResolveSafeFile allowed a symlink pointing outside the base directory")
+	}
+
+	// Directory symlink escaping the base.
+	if err := os.Symlink(outsideDir, filepath.Join(baseDir, "linkdir")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pathutil.ResolveSafeFile(baseDir, "linkdir/secret.txt"); err == nil {
+		t.Error("ResolveSafeFile allowed traversal through a directory symlink outside the base")
+	}
+}
+
+// Verify that a symlink pointing to another file inside the base is allowed.
+func Test_ResolveSafeFile_SymlinkWithinBase_Allowed(t *testing.T) {
+	baseDir := t.TempDir()
+
+	target := filepath.Join(baseDir, "real.md")
+	if err := os.WriteFile(target, []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(baseDir, "alias.md")); err != nil {
+		t.Skipf("cannot create symlinks on this platform: %v", err)
+	}
+
+	if _, err := pathutil.ResolveSafeFile(baseDir, "alias.md"); err != nil {
+		t.Errorf("ResolveSafeFile rejected a symlink that stays within the base: %v", err)
+	}
+}
+
+// ===========================================================================
+// Test: WithinBase
+// ===========================================================================
+
+func Test_WithinBase_Cases(t *testing.T) {
+	sep := string(os.PathSeparator)
+	tests := []struct {
+		name string
+		base string
+		path string
+		want bool
+	}{
+		{"equal paths", "/research", "/research", true},
+		{"direct child", "/research", "/research/project", true},
+		{"nested child", "/research", "/research/a/b/c", true},
+		{"sibling with shared prefix", "/research", "/research-other", false},
+		{"parent", "/research", "/", false},
+		{"outside", "/research", "/etc", false},
+		{"traversal escapes", "/research", "/research/../etc", false},
+		{"traversal stays inside", "/research", "/research/a/../b", true},
+		{"trailing separator on path", "/research", "/research/sub" + sep, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pathutil.WithinBase(tt.base, tt.path); got != tt.want {
+				t.Errorf("WithinBase(%q, %q) = %v, want %v", tt.base, tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 // ===========================================================================
 // Test: ClassifyFileType
 // ===========================================================================

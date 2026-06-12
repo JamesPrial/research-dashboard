@@ -276,14 +276,14 @@ async function loadSourceFile(filePath, fileType, fromPopstate) {
 
   if (fileType === 'html') {
     const url = state.runName
-      ? `/research/past/${state.runName}/files/${filePath}`
-      : `/research/${state.jobId}/files/${filePath}`;
+      ? `/research/past/${encodeURIComponent(state.runName)}/files/${encodePath(filePath)}`
+      : `/research/${encodeURIComponent(state.jobId)}/files/${encodePath(filePath)}`;
     panel.innerHTML = `<div class="panel-toolbar">
       <button class="btn" onclick="loadFiles()">Back to Sources</button>
       <span class="toolbar-title">${escapeHtml(state.currentFile.name)}</span>
-      <a class="btn" href="${url}" target="_blank" rel="noopener">Open in New Tab</a>
+      <a class="btn" href="${escapeAttr(url)}" target="_blank" rel="noopener">Open in New Tab</a>
     </div>
-    <iframe src="${url}" sandbox="allow-same-origin"></iframe>`;
+    <iframe src="${escapeAttr(url)}" sandbox="allow-same-origin"></iframe>`;
   } else {
     panel.innerHTML = `<div class="panel-toolbar">
       <button class="btn" onclick="loadFiles()">Back to Sources</button>

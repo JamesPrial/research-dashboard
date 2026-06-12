@@ -40,5 +40,10 @@ WORKDIR /research
 
 EXPOSE 8420
 
+# Node provides fetch (no curl/wget in slim images). PORT is set by compose;
+# plain docker run uses the 8420 default.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD node -e "fetch('http://localhost:'+(process.env.PORT||8420)+'/research').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["--cwd", "/research", "--claude-path", "claude"]

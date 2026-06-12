@@ -19,6 +19,9 @@ import (
 // are eligible for removal during a cleanup pass.
 const maxJobAge = 24 * time.Hour
 
+// maxRequestBody is the largest accepted request body for API endpoints.
+const maxRequestBody = 1 << 20 // 1 MB
+
 // pastRunPrefix is the URL prefix for past-run routes. These are handled
 // outside the mux to avoid Go 1.22+ ServeMux ambiguity with the
 // GET /research/{id}/files/{path...} wildcard pattern.
@@ -92,7 +95,9 @@ func (s *Server) registerRoutes() {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("failed to encode JSON response", "err", err)
+	}
 }
 
 // writeError writes a JSON error response with the given status code and message.

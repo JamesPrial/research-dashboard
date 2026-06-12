@@ -92,7 +92,7 @@ func (s *Server) servePastReport(w http.ResponseWriter, _ *http.Request, dirName
 		writeError(w, http.StatusNotFound, "report not found")
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	_, _ = w.Write(data)
 }
 
@@ -180,5 +180,10 @@ func serveFile(w http.ResponseWriter, r *http.Request, baseDir, filePath string)
 		return
 	}
 	slog.Debug("serving file", "base_dir", baseDir, "file_path", filePath, "resolved", resolved)
+	// Archived files include HTML captured from arbitrary websites. The
+	// sandbox policy stops their scripts from running with the dashboard's
+	// origin when opened directly.
+	w.Header().Set("Content-Security-Policy", "sandbox")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeFile(w, r, resolved)
 }

@@ -2,6 +2,7 @@
 package jobstore
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -184,6 +185,7 @@ type Job struct {
 	errMsg     string
 	sessionID  string
 	resultInfo model.ResultStats
+	cancel     context.CancelFunc
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +299,25 @@ func (j *Job) SetSessionID(id string) {
 	j.mu.Lock()
 	j.sessionID = id
 	j.mu.Unlock()
+}
+
+// SetCancelFunc records the function used to cancel the job's subprocess
+// context. It is set by the server when the runner goroutine is launched.
+func (j *Job) SetCancelFunc(cancel context.CancelFunc) {
+	j.mu.Lock()
+	j.cancel = cancel
+	j.mu.Unlock()
+}
+
+// Cancel invokes the job's cancel function, terminating the subprocess
+// context. It is a no-op if no cancel function has been set.
+func (j *Job) Cancel() {
+	j.mu.RLock()
+	cancel := j.cancel
+	j.mu.RUnlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // SetResultInfo stores cost and performance statistics for the job.

@@ -48,23 +48,28 @@ async function startJob(query, model) {
 }
 
 async function cancelJob(id) {
-  return apiJson(`/research/${id}`, { method: 'DELETE' });
+  return apiJson(`/research/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// encodePath URL-encodes each segment of a slash-separated file path.
+function encodePath(p) {
+  return p.split('/').map(encodeURIComponent).join('/');
 }
 
 async function fetchFileList(dirName) {
-  return apiJson(`/research/past/${dirName}/files`);
+  return apiJson(`/research/past/${encodeURIComponent(dirName)}/files`);
 }
 
 async function fetchFile(dirName, filePath) {
-  return (await api(`/research/past/${dirName}/files/${filePath}`)).text();
+  return (await api(`/research/past/${encodeURIComponent(dirName)}/files/${encodePath(filePath)}`)).text();
 }
 
 async function fetchJobFileList(jobId) {
-  return apiJson(`/research/${jobId}/files`);
+  return apiJson(`/research/${encodeURIComponent(jobId)}/files`);
 }
 
 async function fetchJobFile(jobId, filePath) {
-  return (await api(`/research/${jobId}/files/${filePath}`)).text();
+  return (await api(`/research/${encodeURIComponent(jobId)}/files/${encodePath(filePath)}`)).text();
 }
 
 // --- Parsing helpers ---

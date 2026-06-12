@@ -26,6 +26,15 @@ var staticFiles embed.FS
 //go:embed research-config/agents/*
 var researchConfigFS embed.FS
 
+const (
+	// cleanupInterval is how often expired jobs are purged from the store.
+	cleanupInterval = 1 * time.Hour
+	// jobExpiry is how old a terminal job must be before cleanup removes it.
+	jobExpiry = 24 * time.Hour
+	// shutdownTimeout bounds graceful HTTP server shutdown.
+	shutdownTimeout = 10 * time.Second
+)
+
 type config struct {
 	port       int
 	host       string
@@ -109,14 +118,14 @@ func run(ctx context.Context, cfg config, addrCh chan<- string) error {
 
 	// Start periodic cleanup of expired jobs.
 	go func() {
-		ticker := time.NewTicker(1 * time.Hour)
+		ticker := time.NewTicker(cleanupInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				store.CleanupExpired(24 * time.Hour)
+				store.CleanupExpired(jobExpiry)
 			}
 		}
 	}()
@@ -146,7 +155,7 @@ func run(ctx context.Context, cfg config, addrCh chan<- string) error {
 	<-ctx.Done()
 	slog.Info("shutting down")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {

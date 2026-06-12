@@ -522,6 +522,12 @@ let detailTimer = null;
 
 function getJobCache(id) {
   if (!state.jobCache[id]) {
+    // Evict the oldest cached job so the cache cannot grow without bound.
+    const MAX_CACHED_JOBS = 20;
+    const ids = Object.keys(state.jobCache);
+    if (ids.length >= MAX_CACHED_JOBS) {
+      delete state.jobCache[ids[0]];
+    }
     state.jobCache[id] = { events: [], status: null, query: '', outputDir: null, resultInfo: null, error: null, autoScroll: true };
   }
   return state.jobCache[id];
@@ -647,8 +653,8 @@ function renderSidebar() {
       const elapsed = isRunning ? formatElapsed(j.created_at) : '';
       const progress = isRunning && j.max_turns > 0 ? Math.min(100, Math.round((j.num_turns / j.max_turns) * 100)) : 0;
 
-      let metaParts = [`<span class="model-badge ${model}">${model}</span>`];
-      metaParts.push(j.status);
+      let metaParts = [`<span class="model-badge ${escapeAttr(model)}">${escapeHtml(model)}</span>`];
+      metaParts.push(escapeHtml(j.status));
       if (isRunning && j.num_turns > 0) {
         metaParts.push(`${j.num_turns}/${j.max_turns} turns`);
       }
@@ -662,8 +668,8 @@ function renderSidebar() {
 
       return `
         <div class="job-item ${isSelected ? 'selected' : ''}"
-             onclick="selectJob('${j.id}')">
-          <div class="status-dot ${j.status}"></div>
+             onclick="selectJob('${escapeAttr(j.id)}')">
+          <div class="status-dot ${escapeAttr(j.status)}"></div>
           <div class="job-info">
             <div class="job-query">${escapeHtml(truncate(j.query, 60))}</div>
             <div class="job-meta">${metaParts.join(' &middot; ')}</div>
@@ -686,7 +692,7 @@ function renderSidebar() {
           <div class="status-dot ${r.has_report ? 'completed' : 'pending'}"></div>
           <div class="job-info">
             <div class="job-query">${escapeHtml(parsed.topic)}</div>
-            <div class="job-meta">${parsed.date || r.name}</div>
+            <div class="job-meta">${parsed.date || escapeHtml(r.name)}</div>
           </div>
         </div>
       `;
@@ -711,7 +717,7 @@ function renderJobPanel(detail) {
     <span class="toolbar-status">${statusText}</span>`;
 
   if (isRunning) {
-    toolbar += `<button class="btn btn-danger" onclick="doCancel('${detail.id}')">Cancel</button>`;
+    toolbar += `<button class="btn btn-danger" onclick="doCancel('${escapeAttr(detail.id)}')">Cancel</button>`;
   }
   if (detail.status === 'completed' && hasOutputDir) {
     toolbar += `<a class="btn btn-primary" href="/reader?jobId=${encodeURIComponent(detail.id)}">View Report</a>`;
@@ -872,7 +878,20 @@ function connectSSE(jobId) {
   });
 
   es.onerror = () => {
-    // EventSource auto-reconnects; if job is done the 'done' event handles cleanup
+    // EventSource auto-reconnects on transient errors. If the browser gave
+    // up entirely (readyState CLOSED), reopen from the current cursor so a
+    // running job doesn't silently stop streaming.
+    if (es.readyState === EventSource.CLOSED && state.eventSource === es) {
+      disconnectSSE();
+      setTimeout(() => {
+        const c = getJobCache(jobId);
+        const stillRunning = c.status === 'running' || c.status === 'pending';
+        const stillSelected = state.selectedId === jobId && state.selectedType === 'job';
+        if (stillSelected && stillRunning && !state.eventSource) {
+          connectSSE(jobId);
+        }
+      }, 5000);
+    }
   };
 }
 
@@ -1087,7 +1106,7 @@ function showToast(job, type) {
     if (type === 'completed') {
       actionHtml = `<a class="toast-action" href="/reader?jobId=${encodeURIComponent(job.id)}">View Report</a>`;
     } else {
-      actionHtml = `<button class="toast-action" onclick="selectJob('${job.id}'); this.parentElement.remove();">View</button>`;
+      actionHtml = `<button class="toast-action" onclick="selectJob('${escapeAttr(job.id)}'); this.parentElement.remove();">View</button>`;
     }
   }
 

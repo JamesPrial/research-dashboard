@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,14 +12,21 @@ import (
 	"path/filepath"
 
 	"github.com/jamesprial/research-dashboard/internal/model"
+	"github.com/jamesprial/research-dashboard/internal/pathutil"
 )
 
 // handleStartResearch handles POST /research.
 // It decodes and validates the request, creates a new job in the store,
 // and launches the runner in a goroutine.
 func (s *Server) handleStartResearch(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	var req model.ResearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -32,16 +40,40 @@ func (s *Server) handleStartResearch(w http.ResponseWriter, r *http.Request) {
 	id := generateID()
 	cwd := s.cwd
 	if req.CWD != nil {
-		cwd = *req.CWD
+		// The subprocess runs with permission checks disabled, so an
+		// arbitrary working directory must not be accepted from clients.
+		requested := filepath.Clean(*req.CWD)
+		if !pathutil.WithinBase(s.cwd, requested) {
+			writeError(w, http.StatusBadRequest, "cwd must be within the configured research directory")
+			return
+		}
+		info, err := os.Stat(requested)
+		if err != nil || !info.IsDir() {
+			writeError(w, http.StatusBadRequest, "cwd does not exist or is not a directory")
+			return
+		}
+		cwd = requested
 	}
 
 	job := s.store.Create(id, req.Query, string(req.Model), req.MaxTurns, cwd)
 	slog.Debug("job created", "id", id, "model", string(req.Model), "max_turns", req.MaxTurns)
 
+	// Derive the job context from the server context so that shutdown and
+	// explicit cancellation both terminate the subprocess.
+	jobCtx, cancel := context.WithCancel(s.ctx)
+	job.SetCancelFunc(cancel)
+
 	go func() {
-		ctx := context.Background()
-		if err := s.runner.Run(ctx, job, s.store); err != nil {
+		defer cancel()
+		if err := s.runner.Run(jobCtx, job, s.store); err != nil {
 			slog.Error("job failed", "id", id, "err", err)
+			// Run returned without reaching a terminal status (e.g. the
+			// subprocess failed to start). Don't leave the job stuck running.
+			switch job.Status() {
+			case model.StatusPending, model.StatusRunning:
+				job.SetError(err.Error())
+				job.SetStatus(model.StatusFailed)
+			}
 		}
 	}()
 
@@ -80,6 +112,7 @@ func (s *Server) handleCancelResearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job.SetStatus(model.StatusCancelled)
+	job.Cancel()
 	slog.Debug("job cancelled", "id", r.PathValue("id"))
 	writeJSON(w, http.StatusOK, job.ToStatus())
 }
@@ -101,7 +134,7 @@ func (s *Server) handleGetReport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "report not found")
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	_, _ = w.Write(data)
 }
 

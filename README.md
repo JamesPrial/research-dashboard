@@ -54,6 +54,7 @@ The container supports `PUID`/`PGID` environment variables for file permission m
 | `--host` | `0.0.0.0` | Bind address |
 | `--cwd` | `~/research` | Working directory for research output |
 | `--claude-path` | `claude` | Path to the Claude Code CLI binary |
+| `--log-level` | `info` | Log level: debug, info, warn, error (also via `LOG_LEVEL` env var) |
 
 ### Docker Authentication
 
@@ -81,7 +82,7 @@ All endpoints return JSON unless noted.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/research` | Start a new job. Body: `{"query": "...", "model": "opus", "max_turns": 100}` |
+| `POST` | `/research` | Start a new job. Body: `{"query": "...", "model": "opus", "max_turns": 100}`. An optional `"cwd"` must be the configured `--cwd` or a subdirectory of it. |
 | `GET` | `/research` | List active jobs and past runs |
 | `GET` | `/research/{id}` | Job detail with full event log |
 | `DELETE` | `/research/{id}` | Cancel a running job |

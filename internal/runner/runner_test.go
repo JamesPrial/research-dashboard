@@ -39,6 +39,9 @@ func TestMain(m *testing.M) {
 	case "maxturns":
 		fakeClaudeMaxTurns()
 		os.Exit(2)
+	case "longline":
+		fakeClaudeLongLine()
+		os.Exit(0)
 	default:
 		// Normal test run — execute all tests.
 		os.Exit(m.Run())
@@ -81,6 +84,20 @@ func fakeClaudeMaxTurns() {
 		fmt.Println(line)
 	}
 	fmt.Fprintln(os.Stderr, "Max turns reached")
+}
+
+// fakeClaudeLongLine emits a single line larger than the runner's scanner
+// buffer, then keeps writing. Without draining stdout after the scanner
+// aborts, the subprocess would block on a full pipe and never exit.
+func fakeClaudeLongLine() {
+	fmt.Println(`{"type":"system","subtype":"init","session_id":"sess-long-1"}`)
+	huge := strings.Repeat("x", 1<<20) // 1 MB, exceeds the 512 KB buffer
+	fmt.Printf(`{"type":"assistant","message":{"content":[{"type":"text","text":"%s"}]}}`+"\n", huge)
+	// Write well past the OS pipe buffer size.
+	filler := strings.Repeat("y", 1024)
+	for i := 0; i < 256; i++ {
+		fmt.Printf(`{"type":"raw","text":"%s"}`+"\n", filler)
+	}
 }
 
 // fakeClaudeOutputDir creates a research-* directory in the cwd before emitting events.
@@ -314,6 +331,35 @@ func Test_Run_Cancel(t *testing.T) {
 	// Status should remain cancelled.
 	if job.Status() != model.StatusCancelled {
 		t.Errorf("Status() = %q, want %q", job.Status(), model.StatusCancelled)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: Oversized output line does not hang the runner
+// ---------------------------------------------------------------------------
+
+func Test_Run_LongLineDoesNotHang(t *testing.T) {
+	setSubprocessBehavior(t, "longline")
+
+	cwd := t.TempDir()
+	r := newTestRunner(t)
+	store, job := newJob(t, cwd)
+
+	done := make(chan error, 1)
+	go func() { done <- r.Run(context.Background(), job, store) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() returned unexpected error: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("Run() hung on an output line exceeding the scanner buffer")
+	}
+
+	// The truncation must be surfaced on the job.
+	if !strings.Contains(job.Error(), "exceeded") {
+		t.Errorf("Error() = %q, want a buffer-exceeded message", job.Error())
 	}
 }
 

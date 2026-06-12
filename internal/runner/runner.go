@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,6 +31,15 @@ import (
 //
 //go:embed prompt.md
 var PromptPrefix string
+
+// scannerBufSize is the maximum stdout line length accepted from the
+// subprocess. Claude's stream-json events can far exceed bufio.Scanner's
+// 64 KB default.
+const scannerBufSize = 512 * 1024
+
+// maxStderrBytes bounds how much subprocess stderr is retained for error
+// reporting; output beyond this is discarded.
+const maxStderrBytes = 64 * 1024
 
 // Runner manages the lifecycle of claude CLI subprocesses for research jobs.
 type Runner struct {
@@ -85,10 +95,12 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 
 	cmd := exec.CommandContext(ctx, r.ClaudePath, args...)
 
-	// Send SIGTERM on context cancellation, then wait up to 10s for exit.
+	// Run the subprocess in its own process group so cancellation reaches
+	// claude's child processes too, then wait up to 10s for exit.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process != nil {
-			return cmd.Process.Signal(syscall.SIGTERM)
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 		}
 		return nil
 	}
@@ -99,8 +111,8 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 	cmd.Dir = cwd
 
 	// Capture stderr separately so we can report it on failure.
-	var stderrBuf strings.Builder
-	cmd.Stderr = &stderrBuf
+	stderrBuf := &cappedBuffer{max: maxStderrBytes}
+	cmd.Stderr = stderrBuf
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -113,11 +125,10 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 
 	slog.Info("runner: subprocess started", "job_id", job.ID(), "pid", cmd.Process.Pid)
 
-	// Read stdout line-by-line with a 512 KB scanner buffer.
+	// Read stdout line-by-line.
 	var counter atomic.Int64
 	scanner := bufio.NewScanner(stdout)
-	const bufSize = 512 * 1024
-	scanner.Buffer(make([]byte, bufSize), bufSize)
+	scanner.Buffer(make([]byte, scannerBufSize), scannerBufSize)
 
 	// Track whether we received a result event indicating successful completion.
 	// The CLI may exit non-zero (e.g. exit code 2 for max turns reached) even
@@ -157,8 +168,14 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 		}
 	}
 
-	if scanErr := scanner.Err(); scanErr != nil && scanErr != io.EOF {
+	if scanErr := scanner.Err(); scanErr != nil && !errors.Is(scanErr, io.EOF) {
 		slog.Warn("runner: scanner error reading stdout", "job_id", job.ID(), "err", scanErr)
+		if errors.Is(scanErr, bufio.ErrTooLong) {
+			job.SetError(fmt.Sprintf("subprocess output line exceeded %d bytes; remaining output discarded", scannerBufSize))
+		}
+		// Drain the rest of stdout so the subprocess doesn't block writing
+		// to a full pipe, which would make cmd.Wait() hang forever.
+		_, _ = io.Copy(io.Discard, stdout)
 	}
 
 	// Wait for the subprocess to exit.
@@ -218,6 +235,26 @@ func (r *Runner) Run(ctx context.Context, job *jobstore.Job, store *jobstore.Sto
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// cappedBuffer is an io.Writer that retains at most max bytes and silently
+// discards the rest, while reporting all writes as successful.
+type cappedBuffer struct {
+	buf strings.Builder
+	max int
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	if remaining := c.max - c.buf.Len(); remaining > 0 {
+		if len(p) > remaining {
+			p = p[:remaining]
+		}
+		c.buf.Write(p)
+	}
+	return n, nil
+}
+
+func (c *cappedBuffer) String() string { return c.buf.String() }
 
 // researchDirs returns a map of absolute directory paths for all "research-*"
 // subdirectories inside dir. Non-existent directories and read errors are

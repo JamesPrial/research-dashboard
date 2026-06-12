@@ -46,9 +46,16 @@ func (s *Server) handleStreamResearch(w http.ResponseWriter, r *http.Request) {
 		case <-ticker.C:
 			events := job.EventsSince(cursor)
 			for _, evt := range events {
-				data, _ := json.Marshal(model.EventToDict(evt))
-				_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 				cursor++
+				data, err := json.Marshal(model.EventToDict(evt))
+				if err != nil {
+					slog.Error("failed to marshal SSE event", "job_id", r.PathValue("id"), "err", err)
+					continue
+				}
+				if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+					// Client disconnected.
+					return
+				}
 			}
 			if len(events) > 0 {
 				_ = rc.Flush()
@@ -61,7 +68,11 @@ func (s *Server) handleStreamResearch(w http.ResponseWriter, r *http.Request) {
 					"status":     string(status),
 					"output_dir": job.OutputDir(),
 				}
-				data, _ := json.Marshal(doneData)
+				data, err := json.Marshal(doneData)
+				if err != nil {
+					slog.Error("failed to marshal SSE done event", "job_id", r.PathValue("id"), "err", err)
+					return
+				}
 				_, _ = fmt.Fprintf(w, "event: done\ndata: %s\n\n", data)
 				_ = rc.Flush()
 				return

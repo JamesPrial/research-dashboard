@@ -3,11 +3,21 @@ package pathutil
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/jamesprial/research-dashboard/internal/model"
 )
+
+// WithinBase reports whether path equals base or is contained within it.
+// Both paths are cleaned before comparison; the check is purely lexical.
+func WithinBase(base, path string) bool {
+	cleanBase := filepath.Clean(base)
+	cleanPath := filepath.Clean(path)
+	return cleanPath == cleanBase ||
+		strings.HasPrefix(cleanPath, cleanBase+string(filepath.Separator))
+}
 
 // ValidateDirName validates a directory name for use in API paths.
 // It rejects names containing /, \, .., or not starting with "research-".
@@ -53,6 +63,26 @@ func ResolveSafeFile(baseDir, filePath string) (string, error) {
 	// sibling directories (e.g. /tmp/base and /tmp/base-other).
 	prefix := cleanBase + string(filepath.Separator)
 	if resolved != cleanBase && !strings.HasPrefix(resolved, prefix) {
+		return "", errors.New("file path escapes base directory")
+	}
+
+	// The lexical check above cannot catch symlinks inside the base directory
+	// that point outside it, so verify the fully resolved location too. A
+	// path that does not exist yet resolves lexically and is returned as-is;
+	// the caller reports not-found.
+	realBase, err := filepath.EvalSymlinks(cleanBase)
+	if err != nil {
+		return "", errors.New("base directory cannot be resolved")
+	}
+	realPath, err := filepath.EvalSymlinks(resolved)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return resolved, nil
+		}
+		return "", errors.New("file path cannot be resolved")
+	}
+	realPrefix := realBase + string(filepath.Separator)
+	if realPath != realBase && !strings.HasPrefix(realPath, realPrefix) {
 		return "", errors.New("file path escapes base directory")
 	}
 
